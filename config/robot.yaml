@@ -1,0 +1,102 @@
+# =============================================================================
+# robot.yaml — 하드웨어 / 네트워크 설정
+# =============================================================================
+# 기기가 3대입니다. 각 블록이 어느 기기에서 읽히는지 표시해뒀습니다.
+#
+#   🦾 Pi-A  : 양팔 라즈베리파이 (SO-101 x2, 리더암, 카메라 3개)
+#   🛞 Pi-B  : 르키위 라즈베리파이 (바퀴, 라이다, ROS2/Nav2)
+#   💻 PC    : GPU PC (SmolVLA 추론 서버 + 에이전트)
+#
+# API 키는 여기 쓰지 말 것. 환경변수로만 넘깁니다.
+
+# --- 🦾 Pi-A : 양팔 --------------------------------------------------------
+# arm_node.py 가 Pi-A 에서 이 설정으로 로봇을 열고, ZMQ 제어 소켓을 엽니다.
+arms:
+  # 에이전트(PC)가 Pi-A 에 명령을 보낼 주소
+  control_address: "tcp://192.168.0.101:5580"   # ← Pi-A 의 IP
+  bind_address: "tcp://0.0.0.0:5580"            # Pi-A 에서 listen 할 주소
+
+  left_port:  "/dev/ttyACM0"    # 왼팔 follower
+  right_port: "/dev/ttyACM1"    # 오른팔 follower
+  id: "home_bi"                 # 캘리브레이션 파일 이름
+
+  # 카메라 이름 규칙 (bi_so_follower 의 동작):
+  #   top_cameras  에 적은 이름은 그대로  ->  "top"
+  #   left_cameras 에 적은 이름은 left_ 접두사가 붙음  ->  "wrist" -> "left_wrist"
+  #   right_cameras 도 마찬가지            ->  "wrist" -> "right_wrist"
+  # 최종 관측 키가 observation.images.top / .left_wrist / .right_wrist 가 됩니다.
+  # 이 이름은 데모 수집 때와 **글자까지 같아야** 합니다.
+  top_cameras:
+    top:   {index_or_path: "/dev/video0", width: 640, height: 480, fps: 30}
+  left_cameras:
+    wrist: {index_or_path: "/dev/video2", width: 640, height: 480, fps: 30}
+  right_cameras:
+    wrist: {index_or_path: "/dev/video4", width: 640, height: 480, fps: 30}
+
+  # 주행 중 팔 자세(파킹 포즈).
+  # Pi 가 둘이라 주행과 조작은 별개 하드웨어지만, 이동 중 팔이 벌어져 있으면
+  # 문틀·가구에 부딪힙니다. 이동 전에 항상 이 자세로 접습니다.
+  # 값은 lerobot-find-joint-limits 로 실제 로봇에서 확인해 채우세요.
+  travel_pose:
+    left_shoulder_pan.pos:   0.0
+    left_shoulder_lift.pos: -95.0
+    left_elbow_flex.pos:     95.0
+    left_wrist_flex.pos:     0.0
+    left_wrist_roll.pos:     0.0
+    left_gripper.pos:        0.0
+    right_shoulder_pan.pos:  0.0
+    right_shoulder_lift.pos: -95.0
+    right_elbow_flex.pos:    95.0
+    right_wrist_flex.pos:    0.0
+    right_wrist_roll.pos:    0.0
+    right_gripper.pos:       0.0
+  park_seconds: 2.5           # 파킹 포즈까지 몇 초에 걸쳐 부드럽게 이동할지
+
+  # 물건을 실제로 잡았는지 판정하는 기준.
+  # 그리퍼가 "끝까지 닫혔다" = 사이에 아무것도 없다 = 못 잡은 것.
+  # joint  : 물건을 잡는 팔의 그리퍼 관절 이름
+  # min    : 이 값보다 작으면 완전히 닫힘 -> 못 잡음
+  # max    : 이 값보다 크면 거의 안 닫힘 -> 못 잡음(놓쳤거나 헛집음)
+  # ※ 실제 값은 주사위를 쥔 채로 아래를 돌려서 확인하고 채우세요.
+  #     python src/arm_node.py  를 띄운 뒤 다른 터미널에서
+  #     python -c "import zmq,json;s=zmq.Context().socket(zmq.REQ);\
+  #       s.connect('tcp://192.168.0.101:5580');s.send_string(json.dumps({'cmd':'grippers'}));\
+  #       print(s.recv_string())"
+  grasp_check:
+    joint: "right_gripper.pos"
+    min: 3.0
+    max: 55.0
+
+# --- 💻 PC : SmolVLA 추론 서버 ----------------------------------------------
+# lerobot 의 async inference 를 씁니다.
+#   PC 에서:    lerobot-policy-server --host=0.0.0.0 --port=8080
+#   Pi-A 에서:  python src/arm_node.py     (이 주소로 붙습니다)
+policy:
+  server_address: "192.168.0.200:8080"   # ← GPU PC 의 IP
+  type: "smolvla"
+  path: "outputs/train/smolvla_home/checkpoints/last/pretrained_model"
+  device: "cuda"                # 서버(PC) 쪽 장치
+  fps: 30                       # 데모 수집 fps 와 동일해야 함
+  actions_per_chunk: 50         # 한 번에 받아오는 행동 개수
+  # 큐가 이 비율 이하로 줄면 새 관측을 보냅니다. 0.5 면 약 25스텝(≈0.8초)에 한 번.
+  # 이미지가 30fps 로 계속 흐르는 게 아니라서 WiFi 로도 충분합니다.
+  chunk_size_threshold: 0.5
+
+# --- 🛞 Pi-B : 자율주행(Nav2) -----------------------------------------------
+# Nav2 스택과 액션 클라이언트가 전부 Pi-B 안에서 돕니다 (src/nav_node.py).
+# PC 는 ZMQ 로 목표만 던지므로 **PC 에 ROS2 를 설치할 필요가 없습니다.**
+navigation:
+  # 에이전트(PC)가 Pi-B 에 명령을 보낼 주소
+  control_address: "tcp://192.168.0.102:5581"   # ← Pi-B(르키위) 의 IP
+  bind_address: "tcp://0.0.0.0:5581"            # Pi-B 에서 listen 할 주소
+
+  action_name: "navigate_to_pose"
+  timeout_s: 60.0
+  # 도착 후 팔을 쓰기 전 대기. 트롤리 관성이 가라앉을 때까지.
+  settle_s: 1.5
+
+# --- 💻 PC : 에이전트(명령 해석) ----------------------------------------------
+agent:
+  provider: "gemini"
+  model: "gemini-flash-lite-latest"
+  # API 키는 환경변수 GEMINI_API_KEY 로만.

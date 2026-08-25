@@ -1,0 +1,16 @@
+# 에이전트 계층 (PC)
+pyyaml>=6.0
+pyzmq>=25.0            # PC <-> Pi-A 제어 채널
+google-genai>=1.0.0        # 명령 해석. 없으면 키워드 매칭으로 폴백됨
+
+# 로봇/정책 (PC, GPU) — 별도 설치 권장:
+#   git clone https://github.com/huggingface/lerobot && pip install -e "lerobot[smolvla,feetech]"
+# lerobot
+
+# 자율주행 (PC) — pip 아님. ROS2 Jazzy + Nav2 를 apt 로 설치:
+#   sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup ros-jazzy-slam-toolbox
+
+# 🦾 Pi-A 에는 lerobot 이 필요합니다 (추론은 PC 가 하지만 로봇 드라이버가 필요):
+#   pip install -e "lerobot[feetech]"
+# 💻 PC 에는 학습·추론까지:
+#   pip install -e "lerobot[smolvla,feetech]"
