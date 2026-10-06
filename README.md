@@ -26,6 +26,7 @@
 |---|---|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | 코드 읽기 전에. 무엇이 어디서 도는지 |
 | **[RUNNING.md](RUNNING.md)** | 실제로 돌릴 때. 0단계부터 순서대로 |
+| **[TELEOP.md](TELEOP.md)** | 리더암이 노트북에 있을 때. host/client 로 텔레옵·녹화 |
 | **[COLLECTING.md](COLLECTING.md)** | 데모 데이터 모을 때. 태스크 하나부터 |
 | **[NAV2_SETUP.md](NAV2_SETUP.md)** | 자율주행 붙일 때. 체크리스트 8단계 |
 | [INTERFACE.md](INTERFACE.md) | 모듈 간 계약. 담당 나눠서 작업할 때 |
@@ -47,6 +48,7 @@ config/
   tasks.yaml       태스크·위치 정의 (단일 진실 소스)
   robot.yaml       IP·포트·카메라·파킹 자세
 src/
+  xlerobot_devices/  🦾💻 host/client 로봇 + 리더암2개+키보드 텔레옵 (lerobot 플러그인)
   arm_node.py      🦾 Pi-A — 팔 소유, 30Hz 제어, ZMQ 명령 수신
   main.py          💻 PC  — 진입점 (조립 + 명령 루프)
   agent.py         💻 PC  — 명령 → 태스크 라우팅
@@ -55,8 +57,12 @@ src/
   policy_client.py 💻 PC  — Pi-A 에 명령 보내는 클라이언트
   task_registry.py 💻 PC  — YAML 로더 + 검증
 scripts/
-  record.sh        🦾 Pi-A — 데모 녹화 (라벨 6종을 인자로)
-tests_smoke.py     하드웨어 없이 도는 로직 검증
+  xle_env.sh       공통 설정 (IP·포트·카메라) — 고치는 건 여기만
+  host.sh          🦾 Pi  — 팔·바퀴·카메라를 열고 ZMQ 로 노출
+  teleop.sh        💻 노트북 — 리더암으로 조종
+  record.sh        💻 노트북 — 데모 녹화 (라벨 6종을 인자로)
+tests_smoke.py     하드웨어 없이 도는 에이전트 로직 검증
+tests_devices.py   host/client/텔레옵의 action 키가 맞는지 검증
 ```
 
 ## 담당
