@@ -23,11 +23,22 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "src"))
 
+# 빠진 모듈 이름을 그대로 보여줍니다. 뭉뚱그려 "lerobot 이 없다"고 하면
+# 실제로는 pyzmq 하나 빠진 건데 lerobot 을 다시 깔게 됩니다.
+_HINT = {
+    "zmq": 'pip install pyzmq',
+    "cv2": 'pip install opencv-python',
+    "lerobot": 'pip install "lerobot[feetech]"',
+    "scservo_sdk": 'pip install "lerobot[feetech]"   # feetech 드라이버',
+}
+
 try:
     import xlerobot_devices  # noqa: F401
 except ImportError as e:
-    print(f"SKIP: lerobot 이 없어서 건너뜁니다 ({e})")
-    print("      pip install -e 'lerobot[feetech]' 한 기기에서 돌리세요.")
+    missing = getattr(e, "name", None) or "?"
+    print(f"SKIP: '{missing}' 모듈이 없어서 건너뜁니다.")
+    print(f"      고치려면:  {_HINT.get(missing, f'pip install {missing}')}")
+    print(f"      (원문: {e})")
     sys.exit(0)
 
 from xlerobot_devices import (  # noqa: E402
