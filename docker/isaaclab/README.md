@@ -66,6 +66,22 @@ GPU 는 **RT 코어가 있어야** 합니다. A100 / H100 은 RT 코어가 없�
 
 ---
 
+## 두 가지 설치 경로
+
+| | 언제 |
+|---|---|
+| **`Dockerfile`** (한 번에) | 데스크톱, 디스크·시간 여유 있을 때 |
+| **[`steps/`](steps/README.md)** (끊어서) | **노트북 권장.** 단계별로 돌리고 깨진 지점부터 이어서 |
+
+isaacsim 다운로드가 10GB 를 넘어서, 뒤에서 깨지면 전부 날아갑니다.
+VRAM/RAM 이 빠듯한 노트북이면 `steps/00_preflight.sh` 로 점검부터 하세요.
+
+```bash
+bash docker/isaaclab/steps/00_preflight.sh   # 아무것도 안 깔고 점검만
+bash docker/isaaclab/steps/10_conda_env.sh   # miniconda + isaac_lab (python 3.11)
+# ... 20 → 30 → 40 → 50
+```
+
 ## 빌드 & 실행
 
 ```bash

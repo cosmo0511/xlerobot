@@ -70,18 +70,25 @@ RUN curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
  && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------------------------------------- Miniconda
+# conda 24.x+ 는 Anaconda 기본 채널(repo.anaconda.com/pkgs/*)에 ToS 동의를 요구합니다.
+# 동의 없이 무인 실행하면 CondaToSNonInteractiveError 로 빌드가 멈춥니다. 게다가 기본 채널은
+# 규모 있는 조직에 유상 라이선스를 요구하므로, conda-forge 단독으로 갑니다.
 RUN wget -qO /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
  && bash /tmp/miniconda.sh -b -p ${CONDA_DIR} \
  && rm /tmp/miniconda.sh \
  && ${CONDA_DIR}/bin/conda config --set always_yes true \
+ && ${CONDA_DIR}/bin/conda config --set auto_activate_base false \
+ && ${CONDA_DIR}/bin/conda config --add channels conda-forge \
+ && (${CONDA_DIR}/bin/conda config --remove channels defaults || true) \
  && ${CONDA_DIR}/bin/conda create -n ${CONDA_ENV} python=${PYTHON_VERSION} \
+      -c conda-forge --override-channels \
  && ${CONDA_DIR}/bin/conda clean -afy \
  && ${CONDA_DIR}/bin/conda init bash
 
 # 아래 RUN 들은 전부 `conda activate isaac_lab` 안에서 실행됩니다.
 RUN --mount=type=cache,target=/root/.cache/pip \
     source ${CONDA_DIR}/etc/profile.d/conda.sh && conda activate ${CONDA_ENV} \
- && python -m pip install --upgrade pip \
+ && python -m pip install --upgrade pip --root-user-action=ignore \
  && python -c "import sys; assert sys.version_info[:2]==(3,11), sys.version; print('python', sys.version.split()[0])"
 
 # ------------------------------------------------------------- Isaac Sim 5.1
