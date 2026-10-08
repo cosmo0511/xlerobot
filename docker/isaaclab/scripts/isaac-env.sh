@@ -12,8 +12,12 @@ ISAAC_CONDA_ENV="${ISAAC_CONDA_ENV:-isaac_lab}"
 # base 이미지(아직 conda 를 안 깐 상태)에서도 이 파일이 쉘을 죽이면 안 됩니다.
 # steps/10_conda_env.sh 를 돌리기 전에는 안내만 하고 그냥 넘어갑니다.
 if [[ ! -f "${CONDA_DIR}/etc/profile.d/conda.sh" ]]; then
-  echo "[isaac-env] conda 가 아직 없습니다 (${CONDA_DIR})." >&2
-  echo "[isaac-env] 설치를 시작하려면:  bash /opt/isaaclab-steps/00_preflight.sh" >&2
+  # entrypoint 와 .bashrc 양쪽에서 source 되므로 안내는 한 번만 띄웁니다.
+  if [[ -z "${ISAAC_ENV_NOTICE_SHOWN:-}" ]]; then
+    echo "[isaac-env] conda 가 아직 없습니다 (${CONDA_DIR})." >&2
+    echo "[isaac-env] 설치를 시작하려면:  bash /opt/isaaclab-steps/00_preflight.sh" >&2
+    export ISAAC_ENV_NOTICE_SHOWN=1
+  fi
 elif [[ "${CONDA_DEFAULT_ENV:-}" != "${ISAAC_CONDA_ENV}" ]]; then
   # shellcheck disable=SC1091
   source "${CONDA_DIR}/etc/profile.d/conda.sh"

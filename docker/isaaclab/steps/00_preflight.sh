@@ -64,13 +64,22 @@ step "3. 시스템 RAM"
 ram_mb=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 ))
 ram_gb=$(( (ram_mb + 1023) / 1024 ))
 info "${ram_gb} GB (MemTotal ${ram_mb} MiB)"
-if   (( ram_gb >= 32 )); then ok "32GB+ (공식 최소)"
-elif (( ram_gb >= 16 )); then
-  warn "${ram_gb}GB — 공식 최소는 32GB 입니다. 복잡한 씬에서 VRAM 보다 RAM 이 먼저 병목입니다."
-  info "  스왑을 넉넉히 잡아두면 기동 실패는 줄어듭니다 (학습 속도와는 별개)."
+# 16GB 장착 노트북도 MemTotal 은 15000~15800 MiB 로 잡힙니다(iGPU·펌웨어 예약).
+# 그래서 "16GB 이상" 을 GiB 로 비교하면 멀쩡한 머신이 FAIL 납니다. MiB 로 봅니다.
+if   (( ram_mb >= 30000 )); then ok "32GB 급 (공식 최소 충족)"
+elif (( ram_mb >= 14000 )); then
+  warn "16GB 급 — 공식 최소는 32GB 입니다. 돌아가지만 복잡한 씬에서 VRAM 보다 먼저 터집니다."
+  info "  스왑을 24GB 쯤 잡아두면 기동 실패가 크게 줄어듭니다."
+  info "  컨테이너가 아니라 **호스트에서** 잡아야 합니다:"
+  info "    sudo fallocate -l 24G /swapfile && sudo chmod 600 /swapfile"
+  info "    sudo mkswap /swapfile && sudo swapon /swapfile"
+  info "    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab"
 else
   bad "${ram_gb}GB — 부족합니다"; fail=1
 fi
+sw_mb=$(( $(awk '/SwapTotal/{print $2}' /proc/meminfo) / 1024 ))
+if (( sw_mb >= 8000 )); then ok "스왑 ${sw_mb} MiB"
+elif (( ram_mb < 30000 )); then warn "스왑 ${sw_mb} MiB — RAM 이 빠듯한데 스왑도 적습니다"; fi
 
 step "4. 디스크 여유"
 # df -P 와 --output 은 같이 못 씁니다. -Pk + awk 가 busybox 에서도 돕니다.
@@ -82,12 +91,18 @@ elif (( avail_gb >=  60 )); then warn "${avail_gb}GB — isaacsim[all,extscache]
 else bad "${avail_gb}GB — 부족합니다. 100GB 를 권합니다."; fail=1; fi
 
 step "5. 네트워크"
-for host in pypi.nvidia.com download.pytorch.org github.com repo.anaconda.com; do
-  if curl -fsSI --max-time 10 "https://${host}" >/dev/null 2>&1 \
-  || curl -fs --max-time 10 -o /dev/null "https://${host}" 2>/dev/null; then
+# 루트(/)는 403 을 주는 호스트가 있어서(download.pytorch.org 는 S3 버킷) 실제로
+# 설치에 쓰는 경로를 찍습니다. 루트로 확인하면 멀쩡한 네트워크가 FAIL 로 나옵니다.
+for u in "https://pypi.nvidia.com/isaacsim/" \
+         "${TORCH_INDEX}/torch/" \
+         "https://github.com/isaac-sim/IsaacLab" \
+         "https://repo.anaconda.com/miniconda/"; do
+  host="${u#https://}"; host="${host%%/*}"
+  if curl -fsSL --max-time 15 -o /dev/null "${u}" 2>/dev/null \
+  || curl -fsSI --max-time 15 -o /dev/null "${u}" 2>/dev/null; then
     ok "${host}"
   else
-    bad "${host} 접근 실패"; fail=1
+    bad "${host} 접근 실패  (${u})"; fail=1
   fi
 done
 
