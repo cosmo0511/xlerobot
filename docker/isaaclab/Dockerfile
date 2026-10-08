@@ -115,7 +115,7 @@ ARG TORCH_INDEX=https://download.pytorch.org/whl/cu128
 # 동의 없이 무인 실행하면 CondaToSNonInteractiveError 로 빌드가 멈춥니다. 게다가 기본 채널은
 # 규모 있는 조직에 유상 라이선스를 요구하므로, conda-forge 단독으로 갑니다.
 RUN wget -qO /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
- && bash /tmp/miniconda.sh -b -p ${CONDA_DIR} \
+ && bash /tmp/miniconda.sh -b -u -p ${CONDA_DIR} \
  && rm /tmp/miniconda.sh \
  && ${CONDA_DIR}/bin/conda config --set always_yes true \
  && ${CONDA_DIR}/bin/conda config --set auto_activate_base false \

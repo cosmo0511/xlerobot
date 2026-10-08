@@ -28,8 +28,13 @@ else
 
   curl -fsSL "https://repo.anaconda.com/miniconda/${mc_file}" -o "${installer}" \
     || die "miniconda 다운로드 실패"
-  # -b 무인설치, -p 설치경로. 이미 있으면 -u 로 갱신
-  bash "${installer}" -b -p "${CONDA_DIR}" || die "miniconda 설치 실패"
+  # -b 무인설치, -p 설치경로, -u 는 "기존 설치 갱신".
+  # ★ -u 가 꼭 필요합니다. ${CONDA_DIR} 가 도커 named volume 의 마운트 지점이면
+  #   내용이 비어 있어도 디렉터리는 이미 존재하고, 설치기가 이렇게 거부합니다:
+  #     ERROR: File or directory already exists: '/opt/conda'
+  #   마운트 지점이라 rmdir 도 안 되므로 -u 로 그 안에 설치합니다.
+  #   디렉터리가 아예 없을 때도 -u 는 문제없이 동작합니다.
+  bash "${installer}" -b -u -p "${CONDA_DIR}" || die "miniconda 설치 실패"
   ok "설치 완료: $("${CONDA_DIR}/bin/conda" --version)"
 fi
 

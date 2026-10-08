@@ -19,6 +19,14 @@ if [[ -d "${ISAACLAB_PATH}/.git" ]]; then
   fi
 else
   mkdir -p "$(dirname "${ISAACLAB_PATH}")"
+  # ${ISAACLAB_PATH} 가 도커 volume 의 마운트 지점이면 비어 있어도 디렉터리는 존재합니다.
+  # git clone 은 "비어 있는" 디렉터리면 그대로 받아들이므로 그 경우는 문제없습니다.
+  # 다만 이전 클론이 중간에 끊겨 찌꺼기가 남으면 거부되므로 먼저 알려줍니다.
+  if [[ -d "${ISAACLAB_PATH}" ]] && [[ -n "$(ls -A "${ISAACLAB_PATH}" 2>/dev/null || true)" ]]; then
+    bad "${ISAACLAB_PATH} 가 비어 있지 않은데 git 저장소도 아닙니다 (중단된 클론으로 보입니다)."
+    info "  안을 비우고 다시 돌리세요:  rm -rf ${ISAACLAB_PATH}/{*,.[!.]*}"
+    exit 1
+  fi
   git clone --depth 1 --branch "${ISAACLAB_REF}" \
       https://github.com/isaac-sim/IsaacLab.git "${ISAACLAB_PATH}" \
     || die "클론 실패"
