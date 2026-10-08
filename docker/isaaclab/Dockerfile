@@ -9,7 +9,7 @@
 # isaacsim[all,extscache] 는 내려받는 양이 10GB 를 넘습니다. 빌드에 30~90분 걸립니다.
 
 ARG CUDA_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
-FROM ${CUDA_IMAGE}
+FROM ${CUDA_IMAGE} AS base
 
 # ---------------------------------------------------------------- 버전 핀
 ARG PYTHON_VERSION=3.11
@@ -69,6 +69,47 @@ RUN curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
  && apt-get update && apt-get install -y --no-install-recommends ${ROS_APT_PACKAGES} \
  && rm -rf /var/lib/apt/lists/*
 
+# -------------------------------------------------------------- 캐시 디렉터리
+RUN mkdir -p /root/.cache/ov /root/.cache/pip /root/.cache/nvidia/GLCache \
+             /root/.nv/ComputeCache /root/.nvidia-omniverse/logs \
+             /root/.local/share/ov/data /root/Documents
+
+# ------------------------------------------------------------------- 쉘 진입점
+COPY scripts/ /opt/isaaclab-scripts/
+COPY steps/   /opt/isaaclab-steps/
+RUN chmod +x /opt/isaaclab-scripts/entrypoint.sh \
+             /opt/isaaclab-scripts/isaac-shell \
+             /opt/isaaclab-scripts/ros-shell \
+ && ln -sf /opt/isaaclab-scripts/isaac-shell /usr/local/bin/isaac-shell \
+ && ln -sf /opt/isaaclab-scripts/ros-shell   /usr/local/bin/ros-shell \
+ && chmod +x /opt/isaaclab-steps/*.sh \
+ && echo 'source /opt/isaaclab-scripts/isaac-env.sh' >> /root/.bashrc
+
+WORKDIR /workspace
+
+# Isaac Sim WebRTC 스트리밍(헤드리스) 포트
+EXPOSE 8211/udp 49100/tcp
+
+ENTRYPOINT ["/opt/isaaclab-scripts/entrypoint.sh"]
+CMD ["bash"]
+
+# ============================================================================
+#  base 스테이지 끝.
+#    docker build --target base   -> 시스템 패키지 + ROS 2 만 있는 가벼운 이미지.
+#                                    steps/ 를 한 단계씩 돌려 설치할 때 씁니다.
+#    docker build                 -> 아래 full 스테이지까지. 전부 구워진 이미지.
+# ============================================================================
+
+FROM base AS full
+
+ARG CONDA_ENV=isaac_lab
+ARG PYTHON_VERSION=3.11
+ARG ISAACSIM_VERSION=5.1.0
+ARG ISAACLAB_REF=v2.3.1
+ARG TORCH_VERSION=2.7.0
+ARG TORCHVISION_VERSION=0.22.0
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cu128
+
 # -------------------------------------------------------------- Miniconda
 # conda 24.x+ 는 Anaconda 기본 채널(repo.anaconda.com/pkgs/*)에 ToS 동의를 요구합니다.
 # 동의 없이 무인 실행하면 CondaToSNonInteractiveError 로 빌드가 멈춥니다. 게다가 기본 채널은
@@ -122,25 +163,3 @@ print('torch cuda :', torch.version.cuda); \
 assert sys.version_info[:2] == (3, 11), sys.version; \
 assert torch.__version__.startswith('${TORCH_VERSION}'), torch.__version__; \
 assert torch.version.cuda == '12.8', torch.version.cuda"
-
-# -------------------------------------------------------------- 캐시 디렉터리
-RUN mkdir -p /root/.cache/ov /root/.cache/pip /root/.cache/nvidia/GLCache \
-             /root/.nv/ComputeCache /root/.nvidia-omniverse/logs \
-             /root/.local/share/ov/data /root/Documents
-
-# ------------------------------------------------------------------- 쉘 진입점
-COPY scripts/ /opt/isaaclab-scripts/
-RUN chmod +x /opt/isaaclab-scripts/entrypoint.sh \
-             /opt/isaaclab-scripts/isaac-shell \
-             /opt/isaaclab-scripts/ros-shell \
- && ln -sf /opt/isaaclab-scripts/isaac-shell /usr/local/bin/isaac-shell \
- && ln -sf /opt/isaaclab-scripts/ros-shell   /usr/local/bin/ros-shell \
- && echo 'source /opt/isaaclab-scripts/isaac-env.sh' >> /root/.bashrc
-
-WORKDIR /workspace
-
-# Isaac Sim WebRTC 스트리밍(헤드리스) 포트
-EXPOSE 8211/udp 49100/tcp
-
-ENTRYPOINT ["/opt/isaaclab-scripts/entrypoint.sh"]
-CMD ["bash"]

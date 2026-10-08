@@ -1,5 +1,8 @@
 # Isaac Sim 5.1 + Isaac Lab 2.3.1 도커 환경
 
+> **터미널에 칠 명령만 순서대로 보려면 → [QUICKSTART.md](QUICKSTART.md)**
+> 이 문서는 왜 그렇게 되어 있는지(버전 조합, Humble/python 3.11 충돌)를 설명합니다.
+
 | 항목 | 버전 | 비고 |
 |---|---|---|
 | OS (컨테이너) | Ubuntu 22.04 (jammy) | GLIBC 2.35 — Isaac Sim pip 설치 하한선에 정확히 걸립니다 |

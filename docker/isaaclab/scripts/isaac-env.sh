@@ -9,10 +9,18 @@
 CONDA_DIR="${CONDA_DIR:-/opt/conda}"
 ISAAC_CONDA_ENV="${ISAAC_CONDA_ENV:-isaac_lab}"
 
-if [[ "${CONDA_DEFAULT_ENV:-}" != "${ISAAC_CONDA_ENV}" ]]; then
+# base 이미지(아직 conda 를 안 깐 상태)에서도 이 파일이 쉘을 죽이면 안 됩니다.
+# steps/10_conda_env.sh 를 돌리기 전에는 안내만 하고 그냥 넘어갑니다.
+if [[ ! -f "${CONDA_DIR}/etc/profile.d/conda.sh" ]]; then
+  echo "[isaac-env] conda 가 아직 없습니다 (${CONDA_DIR})." >&2
+  echo "[isaac-env] 설치를 시작하려면:  bash /opt/isaaclab-steps/00_preflight.sh" >&2
+elif [[ "${CONDA_DEFAULT_ENV:-}" != "${ISAAC_CONDA_ENV}" ]]; then
   # shellcheck disable=SC1091
   source "${CONDA_DIR}/etc/profile.d/conda.sh"
-  conda activate "${ISAAC_CONDA_ENV}"
+  if ! conda activate "${ISAAC_CONDA_ENV}" 2>/dev/null; then
+    echo "[isaac-env] '${ISAAC_CONDA_ENV}' 환경이 없습니다." >&2
+    echo "[isaac-env] 만들려면:  bash /opt/isaaclab-steps/10_conda_env.sh" >&2
+  fi
 fi
 
 export ISAACLAB_PATH="${ISAACLAB_PATH:-/opt/IsaacLab}"
@@ -40,6 +48,7 @@ if [[ -z "${ISAAC_ROS_LIB_ADDED:-}" ]]; then
       echo "[isaac-env] 내부 ROS 2 ${ROS_DISTRO} 라이브러리를 못 찾았습니다." >&2
       echo "[isaac-env] ROS 2 브리지를 쓸 거면 ${_isaac_root} 아래 ros2 확장 설치를 확인하세요." >&2
     fi
+    # isaacsim 이 아직 없으면(설치 전) 조용히 넘어갑니다 — 위 python -c 가 빈 값을 냅니다.
   fi
   unset _isaac_root _ros_lib
 fi

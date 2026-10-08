@@ -29,7 +29,8 @@
 | **[COLLECTING.md](COLLECTING.md)** | 데모 데이터 모을 때. 태스크 하나부터 |
 | **[NAV2_SETUP.md](NAV2_SETUP.md)** | 자율주행 붙일 때. 체크리스트 8단계 |
 | [INTERFACE.md](INTERFACE.md) | 모듈 간 계약. 담당 나눠서 작업할 때 |
-| [docker/isaaclab/README.md](docker/isaaclab/README.md) | Isaac Sim 5.1 + Isaac Lab 2.3.1 시뮬 환경 깔 때 |
+| **[docker/isaaclab/QUICKSTART.md](docker/isaaclab/QUICKSTART.md)** | Isaac Sim / Isaac Lab 깔 때. 터미널에 칠 명령 순서대로 |
+| [docker/isaaclab/README.md](docker/isaaclab/README.md) | 위의 배경. 버전 조합과 ROS2/python 충돌 구조 |
 
 ## 5분 안에 돌려보기
 
