@@ -35,11 +35,14 @@ unset AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH PYTHONPATH ROS_PYTH
 # ros2_bridge 확장이 품고 있는 내부 humble 라이브러리 경로를 찾습니다.
 # 경로 이름은 버전마다 바뀌어 왔으므로(omni.isaac.ros2_bridge -> isaacsim.ros2.bridge)
 # 하드코딩하지 않고 탐색합니다.
-if [[ -z "${ISAAC_ROS_LIB_ADDED:-}" ]]; then
-  _isaac_root="$(python -c 'import isaacsim, pathlib; print(pathlib.Path(isaacsim.__file__).parent)' 2>/dev/null)"
+# 주의: 이 파일은 `set -e` 가 켜진 스크립트에서 source 될 수 있습니다.
+# 실패하는 명령치환 대입은 그 자리에서 쉘을 죽이므로 모든 조회에 `|| true` 를 답니다.
+# (base 이미지에는 python 도 isaacsim 도 없습니다 — 그때 컨테이너가 바로 종료되던 버그)
+if [[ -z "${ISAAC_ROS_LIB_ADDED:-}" ]] && command -v python >/dev/null 2>&1; then
+  _isaac_root="$(python -c 'import isaacsim, pathlib; print(pathlib.Path(isaacsim.__file__).parent)' 2>/dev/null || true)"
   if [[ -n "${_isaac_root}" ]]; then
     _ros_lib="$(find "${_isaac_root}" -maxdepth 4 -type d \
-                  -path "*ros2*${ROS_DISTRO}/lib" -print -quit 2>/dev/null)"
+                  -path "*ros2*${ROS_DISTRO}/lib" -print -quit 2>/dev/null || true)"
     if [[ -n "${_ros_lib}" ]]; then
       export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}${_ros_lib}"
       export ISAAC_ROS_LIB_ADDED=1

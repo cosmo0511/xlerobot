@@ -31,7 +31,7 @@ if ! command -v nvidia-smi >/dev/null; then
   fail=1
 else
   nvidia-smi --query-gpu=name,memory.total,driver_version \
-             --format=csv,noheader | sed 's/^/       /'
+             --format=csv,noheader 2>/dev/null | sed 's/^/       /' || true
   gpu="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1)"
   vram="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n1)"
   drv="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n1)"
