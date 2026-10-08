@@ -17,8 +17,12 @@
 | | 기기 | 담당 | 프로세스 |
 |---|---|---|---|
 | 🦾 | Pi-A | SO-101 양팔 + 카메라 3개 | `python src/arm_node.py` |
-| 🛞 | Pi-B | 르키위 베이스 + 라이다 + Nav2 | `nav2_bringup` + `python src/nav_node.py` |
+| 🛞 | Pi-B | 라이다 + Nav2 | `nav2_bringup` + `python src/nav_node.py` |
 | 💻 | PC | SmolVLA 추론 + 에이전트 | `lerobot-policy-server` + `python src/main.py` |
+
+> ⚠️ 바퀴 모터 3개는 **오른팔과 같은 시리얼 버스**(ID 7·8·9)에 붙어 있습니다.
+> 베이스만 움직여볼 때는 `python src/base_teleop.py` (🦾 Pi-A 에서) — 자세한 내용은
+> [ARCHITECTURE.md](ARCHITECTURE.md) 배선 항목과 [RUNNING.md](RUNNING.md) 1-B단계.
 
 ## 문서
 
@@ -48,6 +52,7 @@ config/
   robot.yaml       IP·포트·카메라·파킹 자세
 src/
   arm_node.py      🦾 Pi-A — 팔 소유, 30Hz 제어, ZMQ 명령 수신
+  base_teleop.py   🦾 Pi-A — 베이스 바퀴(ID 7·8·9)만 키보드 운전 + 배선 점검
   main.py          💻 PC  — 진입점 (조립 + 명령 루프)
   agent.py         💻 PC  — 명령 → 태스크 라우팅
   nav_node.py      🛞 Pi-B — Nav2 액션 호출, ZMQ 명령 수신

@@ -11,7 +11,7 @@
 ```bash
 pip install pyyaml pyzmq
 python src/main.py --dry-run
-python tests_smoke.py          # 로직 검증 9종
+python tests_smoke.py          # 하드웨어 없이 도는 로직 검증
 ```
 
 ```
@@ -77,6 +77,44 @@ lerobot-find-joint-limits --robot.type=so101_follower --robot.port=/dev/ttyACM0
 
 팔을 손으로 접어보고 그때 값을 `robot.yaml` 의 `travel_pose` 에 적으세요.
 문틀을 통과할 수 있고 트롤리에 안 걸리는 자세여야 합니다.
+
+---
+
+## 1-B단계. 베이스만 따로 움직여보기 🦾 (팔 없이)
+
+바퀴 모터 3개는 **오른팔과 같은 시리얼 버스**에 붙어 있습니다 (오른팔 ID 1~6, 바퀴
+ID 7·8·9). 그래서 베이스 확인은 Pi-B 가 아니라 **팔이 물린 기기에서** 합니다.
+
+```bash
+python src/base_teleop.py --scan          # ① 버스에 뭐가 붙었는지
+python src/base_teleop.py --test-wheels   # ② 바퀴 하나씩 돌려서 ID·방향 확인
+python src/base_teleop.py                 # ③ 키보드로 운전
+```
+
+`--scan` 이 ID 1~9 를 다 보여주면 배선이 맞습니다. 7·8·9 가 안 보이면 체인 연결이나
+전원부터 보세요. ID 가 다르면 `config/robot.yaml` 의 `base.wheel_ids` 를 고칩니다.
+
+`--test-wheels` 는 바퀴를 하나씩 1.5초 돌립니다. **바퀴를 들거나 받쳐두고** 하세요.
+`left` 라고 찍힌 순서에 다른 바퀴가 돌면 `base.wheel_ids` 의 숫자를 서로 바꾸면 됩니다.
+
+운전 키 (`base.keys` 에서 바꿀 수 있음):
+
+```
+w/s  앞뒤        a/d  좌우 평행이동     q/e  제자리 회전
+r/f  속도 단계    space  즉시 정지        x · ESC · Ctrl-C  종료
+```
+
+터미널은 키를 뗀 걸 알려주지 않습니다. 그래서 마지막 입력 후 `base.hold_s`(기본 0.6초)
+가 지나면 자동으로 섭니다 — **누르고 있으면 계속 가고, 손을 떼면 0.6초 안에 멈춥니다.**
+속도를 유지하고 싶으면 `--latch` 를 주세요 (space 나 반대키까지 유지).
+
+> ⚠️ **`arm_node.py` 와 동시에 띄우지 마세요.** 같은 포트를 두 프로세스가 열면 리눅스가
+> 막아주지 않고 패킷이 섞여서 양쪽 다 오동작합니다. `base_teleop.py` 는 시작할 때
+> 포트를 쓰는 다른 프로세스가 있으면 거부합니다 (`--force` 로 무시할 수 있지만 쓰지 마세요).
+
+> 팔 모터(ID 1~6)는 이 도구가 **주소를 아예 지정하지 않습니다.** 토크·목표값을 건드리지
+> 않으므로 팔은 있던 자세 그대로 있습니다. 다만 팔 토크가 꺼진 상태라면 중력으로 처지니,
+> 팔을 접어둔(또는 받쳐둔) 상태에서 하세요.
 
 ---
 

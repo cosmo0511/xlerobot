@@ -4,7 +4,9 @@
 # 기기가 3대입니다. 각 블록이 어느 기기에서 읽히는지 표시해뒀습니다.
 #
 #   🦾 Pi-A  : 양팔 라즈베리파이 (SO-101 x2, 리더암, 카메라 3개)
-#   🛞 Pi-B  : 르키위 라즈베리파이 (바퀴, 라이다, ROS2/Nav2)
+#   🛞 Pi-B  : 르키위 라즈베리파이 (라이다, ROS2/Nav2)
+#
+# ⚠️ 바퀴 모터는 **오른팔과 같은 시리얼 버스**에 붙어 있습니다 (아래 base 블록).
 #   💻 PC    : GPU PC (SmolVLA 추론 서버 + 에이전트)
 #
 # API 키는 여기 쓰지 말 것. 환경변수로만 넘깁니다.
@@ -66,6 +68,54 @@ arms:
     joint: "right_gripper.pos"
     min: 3.0
     max: 55.0
+
+# --- 🛞 베이스(옴니휠) : 오른팔과 같은 시리얼 버스 ---------------------------
+# XLeRobot 기본 배선입니다. 바퀴 모터 3개가 **오른팔 체인 뒤에** 붙습니다.
+#
+#   right_port (/dev/ttyACM1) ── 오른팔 ID 1~6 ── 바퀴 ID 7, 8, 9
+#
+# src/base_teleop.py 가 이 블록을 읽어서 **ID 7·8·9 에만** 속도 명령을 보냅니다.
+# 팔 모터는 주소를 지정하지 않으므로 토크·목표값이 바뀌지 않습니다.
+#
+#   python src/base_teleop.py --scan          # 버스에 뭐가 붙었는지 확인
+#   python src/base_teleop.py --test-wheels   # 바퀴 하나씩 돌려 ID·방향 확인
+#   python src/base_teleop.py                 # wasd + qe 로 운전
+#
+# ⚠️ arm_node.py 와 **동시에 띄우지 마세요.** 같은 포트를 둘이 열면 리눅스가
+#    막아주지 않고 패킷이 섞입니다. base_teleop.py 는 시작할 때 이걸 검사해서 거부합니다.
+base:
+  # 비워두면 arms.right_port 를 씁니다. 바퀴를 별도 보드에 옮겼으면 여기에 적으세요.
+  port: null
+
+  # 바퀴 ID. --test-wheels 로 돌려보고 이름과 실제 바퀴가 다르면 서로 바꾸세요.
+  wheel_ids: {left: 7, back: 8, right: 9}
+
+  wheel_radius: 0.05     # m — 바퀴 반지름
+  base_radius: 0.125     # m — 베이스 중심에서 바퀴 접지점까지. 줄자로 재서 채우세요.
+  max_raw: 3000          # 바퀴 하나당 raw 속도 상한(틱). 넘으면 세 바퀴를 같은 비율로 줄입니다.
+
+  # 속도 단계. 텔레옵 중 r/f 로 오갑니다. xy 는 m/s, theta 는 deg/s.
+  speed_levels:
+    - {xy: 0.1, theta: 30}
+    - {xy: 0.2, theta: 60}
+    - {xy: 0.3, theta: 90}
+
+  # 키를 뗀 걸 터미널이 알려주지 않습니다. 마지막 입력 후 이 시간이 지나면 정지합니다.
+  # 터미널 키 자동반복 간격보다 넉넉해야 합니다(보통 0.5초 전후). 짧게 하면 끊겨서 갑니다.
+  hold_s: 0.6
+  loop_hz: 30
+
+  keys:
+    forward: "w"
+    backward: "s"
+    left: "a"
+    right: "d"
+    rotate_left: "q"
+    rotate_right: "e"
+    speed_up: "r"
+    speed_down: "f"
+    stop: " "
+    quit: "x"
 
 # --- 💻 PC : SmolVLA 추론 서버 ----------------------------------------------
 # lerobot 의 async inference 를 씁니다.
