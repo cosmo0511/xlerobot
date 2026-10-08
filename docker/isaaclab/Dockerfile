@@ -154,7 +154,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     git clone --depth 1 --branch ${ISAACLAB_REF} https://github.com/isaac-sim/IsaacLab.git ${ISAACLAB_PATH} \
  && source ${CONDA_DIR}/etc/profile.d/conda.sh && conda activate ${CONDA_ENV} \
- && python -c "import pkg_resources" 2>/dev/null || pip install "setuptools<82" \
+ && { python -c "import pkg_resources" 2>/dev/null || pip install "setuptools<82"; } \
  && pip install --no-build-isolation "flatdict==4.0.1" \
  && cd ${ISAACLAB_PATH} && ./isaaclab.sh -i \
  && python -c "import isaaclab, isaaclab_tasks" 
