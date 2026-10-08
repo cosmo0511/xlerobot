@@ -16,14 +16,29 @@ step "2. conda 환경에 뭐가 깔려 있나"
 pip list 2>/dev/null | grep -iE "^(isaac|torch|triton|stable|rsl|rl-games|skrl)" | sed 's/^/       /' \
   || info "(해당 패키지 없음)"
 
-step "3. isaaclab 계열 import"
-for m in isaacsim isaaclab isaaclab_tasks isaaclab_rl isaaclab_assets isaaclab_mimic; do
+step "3. 설치 여부 (import 가 아니라 패키지 메타데이터 기준)"
+# isaaclab_tasks 등은 omni.* 를 쓰고, omni 는 Kit 앱이 떠야 생깁니다.
+# 맨 파이썬에서 import 가 실패하는 건 정상이므로 메타데이터로 판단합니다.
+python - <<'PY'
+import importlib.metadata as md
+for d in ("isaacsim", "isaaclab", "isaaclab_assets", "isaaclab_tasks",
+          "isaaclab_rl", "isaaclab_mimic"):
+    try:
+        print(f"  OK   {d:<18} {md.version(d)}")
+    except md.PackageNotFoundError:
+        print(f"  FAIL {d:<18} 설치 안 됨")
+PY
+
+step "3b. Kit 없이도 import 돼야 하는 것"
+for m in isaacsim isaaclab isaaclab.app; do
   if python -c "import ${m}" 2>/dev/null; then
     ok "${m}"
   else
     bad "${m}  →  $(python -c "import ${m}" 2>&1 | tail -1)"
   fi
 done
+info "isaaclab_tasks / isaaclab.envs / isaaclab.sim 은 AppLauncher 로 Kit 을 띄운 뒤에만"
+info "import 됩니다. 여기서 No module named omni 가 나는 건 고장이 아닙니다."
 
 step "4. 소스 트리와 editable 설치 흔적"
 if [[ -d "${ISAACLAB_PATH}/source" ]]; then

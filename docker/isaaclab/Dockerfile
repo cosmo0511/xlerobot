@@ -157,7 +157,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
  && { python -c "import pkg_resources" 2>/dev/null || pip install "setuptools<82"; } \
  && pip install --no-build-isolation "flatdict==4.0.1" \
  && cd ${ISAACLAB_PATH} && ./isaaclab.sh -i \
- && python -c "import isaaclab, isaaclab_tasks" 
+ && python -c "import importlib.metadata as m; import isaaclab; from isaaclab.app import AppLauncher; print('isaaclab', [m.version(d) for d in ['isaaclab','isaaclab_assets','isaaclab_tasks','isaaclab_rl','isaaclab_mimic']])"
 
 # isaaclab.sh -i 가 rl_games / rsl_rl / sb3 / skrl 을 깔면서 torch 를 갈아치우는 일이 있어
 # 마지막에 핀으로 되돌리고 검증합니다.

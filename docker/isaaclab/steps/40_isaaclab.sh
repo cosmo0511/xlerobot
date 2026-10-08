@@ -147,15 +147,32 @@ else
 fi
 
 step "검증"
+# 주의: isaaclab_tasks / isaaclab.envs / isaaclab.sim 은 맨 파이썬에서 import 할 수
+# 없습니다. omni.* 를 쓰는데 omni 는 Omniverse Kit 앱이 뜨면서 주입되기 때문입니다.
+# 공식 스크립트도 AppLauncher 로 앱을 띄운 뒤에 import 합니다:
+#     from isaaclab.app import AppLauncher
+#     app_launcher = AppLauncher(args_cli); simulation_app = app_launcher.app
+#     from isaaclab.sim import ...          # ← 여기서부터 가능
+# 그래서 여기서는 설치 여부만 보고, 실제 기동은 50_verify.sh 가 확인합니다.
 TORCH_VERSION="${TORCH_VERSION}" EXPECTED_TORCH_CUDA="${EXPECTED_TORCH_CUDA}" python - <<'PY'
-import os, sys, torch, isaaclab, isaaclab_tasks
+import os, sys, torch, importlib.metadata as md
+import isaaclab
+from isaaclab.app import AppLauncher  # Kit 기동 전에도 되는 유일한 하위 모듈
+
 print(f"       python       {sys.version.split()[0]}")
 print(f"       torch        {torch.__version__}  (cuda {torch.version.cuda})")
-print(f"       isaaclab     {getattr(isaaclab, '__version__', 'ok')}")
+missing = []
+for dist in ("isaaclab", "isaaclab_assets", "isaaclab_tasks", "isaaclab_rl", "isaaclab_mimic"):
+    try:
+        print(f"       {dist:<16} {md.version(dist)}")
+    except md.PackageNotFoundError:
+        missing.append(dist)
+assert not missing, f"설치되지 않은 패키지: {missing}"
 assert torch.__version__.startswith(os.environ["TORCH_VERSION"]), torch.__version__
 assert torch.version.cuda == os.environ["EXPECTED_TORCH_CUDA"], torch.version.cuda
 PY
-ok "isaaclab / isaaclab_tasks import + 핀 일치"
+ok "isaaclab 5개 패키지 설치 + AppLauncher import + torch 핀 일치"
+info "isaaclab_tasks 등은 Kit 앱이 떠야 import 됩니다 — 50_verify.sh 에서 확인합니다."
 
 mark_done 40_isaaclab
 echo
