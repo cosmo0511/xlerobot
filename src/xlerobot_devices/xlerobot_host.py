@@ -20,7 +20,13 @@
 #   노트북에서 열 수 없으니 Pi 가 읽어서 보내주는 수밖에 없습니다.
 # =============================================================================
 
-from __future__ import annotations
+# ⚠️ 이 파일에는 `from __future__ import annotations` 를 넣지 마세요.
+# draccus 가 main(cfg: XLerobotServerConfig) 의 타입 annotation 을 읽어서
+# 그 dataclass 의 필드를 CLI 인자로 펼칩니다. future import 를 켜면 annotation 이
+# 문자열("XLerobotServerConfig")이 되어버려서 draccus 가 dataclasses.fields() 를
+# 문자열에 대고 호출합니다:
+#   TypeError: must be called with a dataclass type or instance
+# lerobot 의 lekiwi_host.py 도 같은 이유로 future import 를 쓰지 않습니다.
 
 import json
 import logging
