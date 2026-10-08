@@ -297,30 +297,32 @@ class XLerobot(Robot):
         angles = np.radians(np.array([240.0, 0.0, 120.0]) - 90.0)
         return np.array([[np.cos(a), np.sin(a), BASE_RADIUS] for a in angles])
 
-    def _body_to_wheel_raw(self, x: float, y: float, theta: float) -> dict[str, int]:
+    @staticmethod
+    def _body_to_wheel_raw(x: float, y: float, theta: float) -> dict[str, int]:
         """몸체 속도 (m/s, m/s, deg/s) -> 바퀴 raw 명령 3개."""
         velocity = np.array([x, y, theta * np.pi / 180.0])
-        wheel_degps = (self._wheel_matrix().dot(velocity) / WHEEL_RADIUS) * (180.0 / np.pi)
+        wheel_degps = (XLerobot._wheel_matrix().dot(velocity) / WHEEL_RADIUS) * (180.0 / np.pi)
 
         # 한 바퀴라도 한계를 넘으면 셋 다 같은 비율로 줄입니다 (방향 유지).
         raw_floats = [abs(d) * 4096.0 / 360.0 for d in wheel_degps]
         if max(raw_floats) > MAX_WHEEL_RAW:
             wheel_degps = wheel_degps * (MAX_WHEEL_RAW / max(raw_floats))
 
-        raw = [self._degps_to_raw(d) for d in wheel_degps]
+        raw = [XLerobot._degps_to_raw(d) for d in wheel_degps]
         return {
             "base_left_wheel": raw[0],
             "base_back_wheel": raw[1],
             "base_right_wheel": raw[2],
         }
 
-    def _wheel_raw_to_body(self, left: float, back: float, right: float) -> dict[str, float]:
+    @staticmethod
+    def _wheel_raw_to_body(left: float, back: float, right: float) -> dict[str, float]:
         """바퀴 raw 피드백 -> 몸체 속도 (m/s, m/s, deg/s)."""
         wheel_degps = np.array(
-            [self._raw_to_degps(left), self._raw_to_degps(back), self._raw_to_degps(right)]
+            [XLerobot._raw_to_degps(left), XLerobot._raw_to_degps(back), XLerobot._raw_to_degps(right)]
         )
         wheel_linear = wheel_degps * (np.pi / 180.0) * WHEEL_RADIUS
-        x, y, theta_rad = np.linalg.inv(self._wheel_matrix()).dot(wheel_linear)
+        x, y, theta_rad = np.linalg.inv(XLerobot._wheel_matrix()).dot(wheel_linear)
         return {"x.vel": float(x), "y.vel": float(y), "theta.vel": float(theta_rad * 180.0 / np.pi)}
 
     def _from_keyboard_to_base_action(self, pressed_keys) -> dict[str, float]:
