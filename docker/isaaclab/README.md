@@ -53,10 +53,10 @@ ROS 노드 쪽은 시스템 Humble 을 그대로 씁니다.
 # 1. 드라이버 — Isaac Sim 5.1 테스트 버전은 580.65.06 입니다. 최소 CUDA 12.8 을 받으려면 570+ 필요
 nvidia-smi
 
-# 2. nvidia-container-toolkit
-sudo apt install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
+# 2. Docker + nvidia-container-toolkit
+#    nvidia-container-toolkit 은 우분투 기본 저장소에 없습니다 (NVIDIA 저장소 등록 필요).
+#    저장소 등록 → 설치 → 런타임 연결까지 한 번에:
+bash docker/isaaclab/host_setup.sh
 docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi   # 여기까지 돼야 합니다
 
 # 3. GUI 를 쓸 거면

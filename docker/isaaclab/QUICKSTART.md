@@ -3,6 +3,7 @@
 복붙하면 됩니다. 각 블록이 끝나야 다음으로 갑니다.
 
 - **0 ~ 2단계는 노트북(호스트)** 터미널
+  (`host_setup.sh` 는 레포 안에 있으니 **1단계 클론을 먼저** 하고 0단계를 돌려도 됩니다)
 - **3단계부터는 컨테이너 안** — 프롬프트가 `root@...:/workspace#` 로 바뀝니다
 
 ---
@@ -15,17 +16,51 @@
 # 드라이버 확인. RTX 4060 이 보이고 Driver Version 이 570 이상이어야 합니다.
 nvidia-smi
 
-# 도커 + NVIDIA 런타임
-sudo apt update
-sudo apt install -y docker.io docker-compose-v2 nvidia-container-toolkit
+# 레포를 받고 (1단계) 나서
+bash docker/isaaclab/host_setup.sh
+```
+
+`host_setup.sh` 가 Docker + NVIDIA Container Toolkit 설치, 런타임 연결, docker 그룹,
+GPU 확인까지 다 합니다. 여러 번 돌려도 안전합니다.
+
+> **`apt install nvidia-container-toolkit` 한 줄로는 안 됩니다.**
+> 이 패키지는 우분투 기본 저장소에 없고 NVIDIA 저장소에 있습니다.
+> 게다가 apt 는 패키지 하나라도 못 찾으면 **아무것도 설치하지 않고 전부 취소**합니다.
+> 그래서 `apt install docker.io ... nvidia-container-toolkit` 는 docker 까지 같이 날아가고,
+> 이어지는 `nvidia-ctk: command not found` / `docker.service not found` 로 번집니다.
+
+직접 치고 싶다면 이 순서입니다 (스크립트가 하는 일):
+
+```bash
+# 1) Docker 공식 저장소 — 우분투 저장소의 docker.io 는 배포판에 따라 compose v2 가 없습니다
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 2) NVIDIA Container Toolkit 저장소 ★ 빠뜨리면 위 에러가 납니다
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+  | sudo gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+
+# 3) Docker 에 연결
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
-sudo usermod -aG docker $USER     # 이거 하면 로그아웃/재로그인 한 번 필요합니다
+sudo usermod -aG docker $USER        # 로그아웃/재로그인 필요 (급하면 newgrp docker)
 
-# 컨테이너가 GPU 를 보는지 확인 — 여기서 nvidia-smi 출력이 나와야 다음으로 갑니다
+# 4) 확인 — 여기서 nvidia-smi 출력이 나와야 다음으로 갑니다
 docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi
 
-# GUI 를 띄울 거면
+# 5) GUI 쓸 거면
 xhost +local:root
 ```
 
@@ -188,7 +223,10 @@ exit                       # 돌아오기
 | 터미널에 뜨는 것 | 할 일 |
 |---|---|
 | `docker: permission denied` | `sudo usermod -aG docker $USER` 후 로그아웃/재로그인 |
-| `could not select device driver "nvidia"` | `nvidia-container-toolkit` 미설치. 0단계로 |
+| `E: Unable to locate package nvidia-container-toolkit` | NVIDIA 저장소 미등록. `bash docker/isaaclab/host_setup.sh` |
+| `nvidia-ctk: command not found` | 위와 같은 원인 (apt 가 통째로 취소됐습니다) |
+| `Unit docker.service not found` | 위와 같은 원인. docker 도 같이 설치가 취소된 상태입니다 |
+| `could not select device driver "nvidia"` | 툴킷은 깔렸는데 런타임 미연결. `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker` |
 | `CondaToSNonInteractiveError` | 이 레포 스크립트는 conda-forge 를 쓰므로 안 납니다. 직접 `conda create` 를 쳤다면 `-c conda-forge --override-channels` 를 붙이세요 |
 | `no space left on device` | 호스트에서 `docker system prune -af`. 100GB 는 필요합니다 |
 | `Out of GPU memory` | `--num_envs` 를 절반으로 |
