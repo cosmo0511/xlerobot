@@ -229,6 +229,8 @@ exit                       # 돌아오기
 | `could not select device driver "nvidia"` | 툴킷은 깔렸는데 런타임 미연결. `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker` |
 | `CondaToSNonInteractiveError` | 이 레포 스크립트는 conda-forge 를 쓰므로 안 납니다. 직접 `conda create` 를 쳤다면 `-c conda-forge --override-channels` 를 붙이세요 |
 | `no space left on device` | 호스트에서 `docker system prune -af`. 100GB 는 필요합니다 |
+| `ModuleNotFoundError: No module named 'pkg_resources'` (flatdict 빌드 중) | setuptools 82.0.0 이 pkg_resources 를 없앴고 pip 빌드 격리는 최신 setuptools 를 받습니다. `pip install --no-build-isolation flatdict==4.0.1` 먼저 |
+| `No module named 'isaaclab'` (설치했는데도) | `isaaclab.sh -i` 는 확장 설치 실패를 종료코드에 반영하지 않습니다. `bash steps/diag.sh` 로 확인 후 `steps/40_isaaclab.sh` 재실행 |
 | `Out of GPU memory` | `--num_envs` 를 절반으로 |
 | `LLVM ERROR: out of memory` | VRAM 이 아니라 시스템 RAM. Windows 면 `.wslconfig` 의 swap 을 늘리세요 |
 | `librcutils.so: cannot open shared object file` | `source /opt/isaaclab-scripts/isaac-env.sh` 다시 |

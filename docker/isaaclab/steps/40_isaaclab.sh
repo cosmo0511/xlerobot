@@ -33,6 +33,40 @@ else
   ok "클론 완료"
 fi
 
+# ---------------------------------------------------------------------------
+# 빌드 격리 + pkg_resources 문제 선처리
+#
+# isaaclab 은 flatdict==4.0.1 을 요구하는데 이 패키지는 PyPI 에 sdist 만 있어서
+# 반드시 소스 빌드를 해야 합니다. 그런데 flatdict 의 setup.py 는 pkg_resources 를
+# import 하고, pkg_resources 는 setuptools 82.0.0 에서 제거됐습니다.
+# pip 의 빌드 격리 환경은 항상 최신 setuptools 를 새로 받아오므로 빌드가 이렇게 깨집니다:
+#
+#     Getting requirements to build wheel: finished with status 'error'
+#     ModuleNotFoundError: No module named 'pkg_resources'
+#     ERROR: Failed to build 'flatdict' when getting requirements to build wheel
+#
+# PIP_CONSTRAINT 는 이 격리 overlay 에 적용되지 않습니다(pip 26 에서 확인).
+# 그래서 환경 자체의 setuptools(pkg_resources 포함)를 쓰도록 --no-build-isolation 으로
+# 미리 깔아 둡니다. 그러면 isaaclab 설치 때는 이미 충족돼 있어 빌드를 건너뜁니다.
+ensure_legacy_sdist() {
+  local spec="$1"
+  local name="${spec%%[=<>!]*}"
+  if python -c "import importlib.metadata as m; m.version('${name}')" 2>/dev/null; then
+    ok "${name} 이미 설치됨"
+    return 0
+  fi
+  if ! python -c "import pkg_resources" 2>/dev/null; then
+    warn "환경의 setuptools 에 pkg_resources 가 없습니다 (82.0.0 에서 제거됨). 82 미만으로 내립니다."
+    pip install -q "setuptools<82" || die "setuptools 다운그레이드 실패"
+  fi
+  pip install --no-build-isolation "${spec}" 2>&1 | tail -2 \
+    || die "${spec} 설치 실패"
+  ok "${spec}"
+}
+
+step "소스 빌드가 필요한 패키지 선처리"
+ensure_legacy_sdist "flatdict==4.0.1"
+
 # RL 프레임워크 선택. 기본값은 공식 문서와 같은 all.
 #   rsl_rl 만 쓸 거면 ISAACLAB_RL_FRAMEWORK=rsl_rl 로 두세요 — 아래 sb3 충돌이 사라집니다.
 ISAACLAB_RL_FRAMEWORK="${ISAACLAB_RL_FRAMEWORK:-all}"

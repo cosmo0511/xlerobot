@@ -146,10 +146,18 @@ RUN --mount=type=cache,target=/root/.cache/pip \
  && pip install -U "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}" --index-url ${TORCH_INDEX}
 
 # ------------------------------------------------------------ Isaac Lab 2.3.1
+# flatdict==4.0.1 은 sdist 뿐이라 소스 빌드가 필요한데, 그 setup.py 가 import 하는
+# pkg_resources 는 setuptools 82.0.0 에서 제거됐습니다. pip 의 빌드 격리 환경은 항상
+# 최신 setuptools 를 받아오므로 그대로 두면 isaaclab 설치가 여기서 깨집니다
+# (PIP_CONSTRAINT 는 격리 overlay 에 적용되지 않습니다). 환경의 setuptools 를 쓰도록
+# --no-build-isolation 으로 먼저 깔아 둡니다.
 RUN --mount=type=cache,target=/root/.cache/pip \
     git clone --depth 1 --branch ${ISAACLAB_REF} https://github.com/isaac-sim/IsaacLab.git ${ISAACLAB_PATH} \
  && source ${CONDA_DIR}/etc/profile.d/conda.sh && conda activate ${CONDA_ENV} \
- && cd ${ISAACLAB_PATH} && ./isaaclab.sh -i
+ && python -c "import pkg_resources" 2>/dev/null || pip install "setuptools<82" \
+ && pip install --no-build-isolation "flatdict==4.0.1" \
+ && cd ${ISAACLAB_PATH} && ./isaaclab.sh -i \
+ && python -c "import isaaclab, isaaclab_tasks" 
 
 # isaaclab.sh -i 가 rl_games / rsl_rl / sb3 / skrl 을 깔면서 torch 를 갈아치우는 일이 있어
 # 마지막에 핀으로 되돌리고 검증합니다.
