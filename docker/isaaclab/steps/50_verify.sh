@@ -48,14 +48,28 @@ else
   info "/opt/ros 가 없습니다. 건너갑니다."
 fi
 
-step "5. 헤드리스 기동 (create_empty.py)"
+step "5. 헤드리스 기동"
+# 튜토리얼의 create_empty.py 는 무한 루프라 검증에 쓸 수 없습니다
+# (`while simulation_app.is_running(): sim.step()` — 사용자가 끄기 전까지 안 끝남).
+# 몇 스텝만 돌고 종료하는 _smoke_sim.py 를 씁니다.
 if [[ "${SKIP_SIM:-0}" == "1" ]]; then
   info "SKIP_SIM=1 — 건너갑니다"
 else
-  info "첫 실행은 셰이더 컴파일로 수 분 걸립니다."
-  "${ISAACLAB_PATH}/isaaclab.sh" -p \
-    "${ISAACLAB_PATH}/scripts/tutorials/00_sim/create_empty.py" --headless \
-    && ok "기동 성공" || { bad "기동 실패"; fail=1; }
+  info "첫 실행은 셰이더 컴파일로 5~10분 걸립니다. 로그가 멈춘 듯 보여도 정상입니다."
+  info "최대 ${SIM_TIMEOUT:-1800}초까지 기다립니다."
+  if timeout "${SIM_TIMEOUT:-1800}" \
+       "${ISAACLAB_PATH}/isaaclab.sh" -p "$(pwd)/_smoke_sim.py" --headless --steps 60 \
+       2>&1 | tee "${STATE_DIR}/smoke_sim.log" | grep -qE "\[SMOKE-OK\]"; then
+    ok "Kit 기동 + 물리 60 스텝 완료"
+  else
+    rc=$?
+    if [[ ${rc} -eq 124 ]]; then
+      bad "시간 초과 (${SIM_TIMEOUT:-1800}초). 셰이더 컴파일이 더 필요하면 SIM_TIMEOUT 을 늘리세요."
+    else
+      bad "기동 실패 — 로그: ${STATE_DIR}/smoke_sim.log"
+    fi
+    fail=1
+  fi
 fi
 
 echo
