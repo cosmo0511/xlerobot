@@ -61,7 +61,9 @@ else
     [[ -f "${d}setup.py" || -f "${d}pyproject.toml" ]] || continue
     name="$(basename "${d}")"
     info "pip install -e ${name}"
-    python -m pip install -e "${d}" --no-build-isolation 2>&1 | tail -3       || warn "${name} 설치 실패 (로그 확인)"
+    # upstream(isaaclab.sh)과 같은 형태로 깝니다: 그냥 pip install --editable
+    python -m pip install -e "${d}" 2>&1 | tail -3 \
+      || warn "${name} 설치 실패 (로그는 ${INSTALL_LOG})"
   done
   python -c "import isaaclab" 2>/dev/null     && ok "직접 설치 후 import 통과"     || die "여전히 isaaclab 을 import 할 수 없습니다. bash steps/diag.sh 결과를 확인하세요."
 fi
