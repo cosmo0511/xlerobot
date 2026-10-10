@@ -18,6 +18,7 @@ from camera_config import (  # noqa: E402
     CameraConfigError,
     camera_names,
     dataset_fps,
+    layout_for_robot,
     list_camera_sets,
     load_camera_set,
     observation_keys,
@@ -240,7 +241,39 @@ assert args4[1].startswith("--robot.left_arm_config.cameras={"), args4[1]
 ok(f"lerobot-record 인자 {len(args4)}개 생성")
 
 
-# --- 10. record.sh 가 카메라를 하드코딩하지 않는다 ------------------------------
+# --- 10. 로봇 클래스가 달라도 최종 관측 키는 같다 --------------------------------
+# bi_so_follower 계열은 카메라를 팔별로 받고 left_/right_ 접두사를 자동으로 붙입니다.
+# xlerobot 계열은 카메라가 평평하게 달려서 접두사를 안 붙입니다.
+# 두 경우에 **최종 키가 같아야** 로봇 클래스를 바꿔도 정책이 그대로 돕니다.
+assert layout_for_robot("bi_so_follower") == "per_arm"
+assert layout_for_robot("xlerobot") == "flat"
+assert layout_for_robot("xlerobot_client") == "flat"
+assert layout_for_robot("처음보는타입") == "per_arm", "모르는 타입은 기본값이어야 함"
+ok("로봇 타입 -> 카메라 레이아웃 매핑")
+
+flat = record_args(cam4, "flat")
+assert len(flat) == 1, flat
+assert flat[0].startswith("--robot.cameras={"), flat[0]
+# flat 에서는 우리가 최종 이름을 직접 적어야 합니다 (접두사 자동 적용 없음)
+for name in ("top", "base", "left_wrist", "right_wrist"):
+    assert f"{name}: " in flat[0], f"flat 레이아웃에 {name} 이 없음: {flat[0]}"
+ok("flat 레이아웃 — --robot.cameras 하나에 최종 이름 4개")
+
+per_arm = record_args(cam4, "per_arm")
+assert len(per_arm) == 3, per_arm
+# per_arm 에서는 접두사를 lerobot 이 붙이므로 우리는 wrist 로만 적습니다
+assert "left_wrist" not in per_arm[1], "per_arm 에 접두사를 중복으로 붙였습니다"
+assert "wrist: " in per_arm[1], per_arm[1]
+ok("per_arm 레이아웃 — 접두사는 lerobot 이 붙이도록 wrist 로만 넘김")
+
+try:
+    record_args(cam4, "없는레이아웃")
+    raise AssertionError("없는 레이아웃을 통과시킴")
+except CameraConfigError:
+    ok("거부 — 없는 레이아웃")
+
+
+# --- 11. record.sh 가 카메라를 하드코딩하지 않는다 ------------------------------
 # 이 테스트가 이 변경의 핵심입니다. record.sh 에 장치 경로가 다시 들어오면
 # 추론 설정과 조용히 어긋나기 시작합니다.
 record_sh = (pathlib.Path(__file__).resolve().parent / "scripts" / "record.sh").read_text(

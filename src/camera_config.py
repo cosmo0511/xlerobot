@@ -5,6 +5,8 @@ camera_config.py — 카메라 구성의 **단일 진실 소스**.
     python src/camera_config.py 3cam            # 그 구성의 관측 키 확인
     python src/camera_config.py 3cam --check    # /dev/video* 가 실제로 있는지 확인
     python src/camera_config.py 3cam --record-args   # lerobot-record 인자 출력
+    python src/camera_config.py 4cam --record-args --robot-type=xlerobot
+                                                #   ↑ 로봇 클래스에 맞는 형태로
     python src/camera_config.py 3cam --fps      # 데이터셋 fps
     python src/camera_config.py 3cam --table    # 표만 (배너용)
 
@@ -57,6 +59,32 @@ BLOCKS = {
 }
 
 DEFAULT_SET = "3cam"
+
+# 로봇 클래스에 따라 lerobot 이 카메라를 받는 방식이 다릅니다.
+#
+#   "per_arm" — bi_so_follower 계열. 카메라를 팔별로 나눠서 넘기고,
+#               lerobot 이 left_/right_ 접두사를 **자동으로 붙입니다.**
+#                 --robot.cameras / --robot.left_arm_config.cameras / ...
+#
+#   "flat"    — xlerobot 계열 (양팔 + 옴니휠 베이스). 카메라가 로봇 하나에
+#               평평하게 달립니다. 접두사를 **자동으로 안 붙이므로**
+#               우리가 최종 이름(left_wrist 등)을 그대로 적어 넘깁니다.
+#                 --robot.cameras 하나만
+#
+# 둘 중 뭘 쓰든 **최종 관측 키는 똑같습니다** (observation.images.left_wrist 등).
+# 그래서 로봇 클래스를 바꿔도 학습된 정책의 카메라 키는 안 바뀝니다.
+LAYOUTS = ("per_arm", "flat")
+DEFAULT_LAYOUT = "per_arm"
+
+# 로봇 타입 -> 레이아웃. 모르는 타입은 per_arm 으로 둡니다.
+ROBOT_LAYOUTS = {
+    "bi_so_follower": "per_arm",
+    "bi_so101_follower": "per_arm",
+    "xlerobot": "flat",
+    "xlerobot_client": "flat",
+    "xlerobot_2wheels": "flat",
+    "xlerobot_mecanum": "flat",
+}
 
 
 class CameraConfigError(Exception):
@@ -180,11 +208,37 @@ def dataset_fps(cams: dict) -> int:
     return rates.pop()
 
 
-def record_args(cams: dict) -> list[str]:
-    """lerobot-record 에 넘길 `--robot.*.cameras=...` 인자들.
+def _spec_json(spec: dict) -> str:
+    return json.dumps({
+        "type": spec.get("type", "opencv"),
+        "index_or_path": spec["index_or_path"],
+        "width": spec.get("width", 640),
+        "height": spec.get("height", 480),
+        "fps": spec.get("fps", 30),
+    })
 
-    빈 블록은 인자를 아예 안 내보냅니다(생략 = 카메라 없음과 같음).
+
+def record_args(cams: dict, layout: str = DEFAULT_LAYOUT) -> list[str]:
+    """lerobot-record 에 넘길 `--robot...cameras=...` 인자들.
+
+    layout 이 뭐든 최종 관측 키는 같습니다 — LAYOUTS 주석 참고.
     """
+    if layout not in LAYOUTS:
+        raise CameraConfigError(
+            f"알 수 없는 레이아웃 {layout!r}. 쓸 수 있는 값: {', '.join(LAYOUTS)}"
+        )
+
+    if layout == "flat":
+        # 접두사가 자동으로 안 붙으므로 최종 이름을 그대로 씁니다.
+        body = ", ".join(
+            f"{prefix}{name}: " + _spec_json(spec)
+            for block, prefix in BLOCKS.items()
+            for name, spec in (cams.get(block) or {}).items()
+        )
+        return [f"--robot.cameras={{ {body} }}"]
+
+    # per_arm: 블록별로 인자를 나눠 넘기고 접두사는 lerobot 이 붙입니다.
+    # 빈 블록은 인자를 아예 안 내보냅니다(생략 = 카메라 없음과 같음).
     arg_for = {
         "top_cameras": "--robot.cameras",
         "left_cameras": "--robot.left_arm_config.cameras",
@@ -196,18 +250,15 @@ def record_args(cams: dict) -> list[str]:
         entries = cams.get(block) or {}
         if not entries:
             continue
-        body = ", ".join(
-            f"{name}: " + json.dumps({
-                "type": spec.get("type", "opencv"),
-                "index_or_path": spec["index_or_path"],
-                "width": spec.get("width", 640),
-                "height": spec.get("height", 480),
-                "fps": spec.get("fps", 30),
-            })
-            for name, spec in entries.items()
-        )
+        body = ", ".join(f"{name}: " + _spec_json(spec)
+                         for name, spec in entries.items())
         args.append(f"{flag}={{ {body} }}")
     return args
+
+
+def layout_for_robot(robot_type: str) -> str:
+    """로봇 타입에 맞는 카메라 레이아웃. 모르는 타입은 기본값."""
+    return ROBOT_LAYOUTS.get(robot_type, DEFAULT_LAYOUT)
 
 
 def describe(cams: dict) -> str:
@@ -230,7 +281,18 @@ def describe(cams: dict) -> str:
 # =============================================================================
 def main(argv: list[str]) -> int:
     args = [a for a in argv if not a.startswith("--")]
-    flags = {a for a in argv if a.startswith("--")}
+    flags = {a.split("=", 1)[0] for a in argv if a.startswith("--")}
+    values = dict(a[2:].split("=", 1) for a in argv
+                  if a.startswith("--") and "=" in a)
+
+    # 레이아웃은 직접 주거나(--layout=flat) 로봇 타입에서 유도합니다
+    # (--robot-type=xlerobot). 둘 다 없으면 기본값.
+    if "layout" in values:
+        layout = values["layout"]
+    elif "robot-type" in values:
+        layout = layout_for_robot(values["robot-type"])
+    else:
+        layout = DEFAULT_LAYOUT
 
     if not args:
         print("쓸 수 있는 카메라 구성:")
@@ -250,8 +312,12 @@ def main(argv: list[str]) -> int:
 
     if "--record-args" in flags:
         # record.sh 가 한 줄씩 읽어서 배열에 담습니다.
-        for arg in record_args(cams):
-            print(arg)
+        try:
+            for arg in record_args(cams, layout):
+                print(arg)
+        except CameraConfigError as e:
+            print(f"오류: {e}", file=sys.stderr)
+            return 1
         return 0
 
     if "--fps" in flags:
