@@ -191,6 +191,15 @@ if [ -d "$DATASET_ROOT" ] && [ "$DONE" != "0" ]; then
   fi
 else
   RESUME="false"
+  # 첫 녹화가 에피소드 하나 저장하기 전에 죽으면 meta/info.json 만 있는 빈 폴더가
+  # 남습니다. lerobot 은 새로 만들 때 폴더가 있으면 FileExistsError 로 거부합니다.
+  if [ -d "$DATASET_ROOT" ]; then
+    echo "에피소드 0개인 폴더가 남아 있습니다 (지난 녹화가 저장 전에 끊김): $DATASET_ROOT" >&2
+    echo "안에 든 게 없는지 확인하고 지운 뒤 다시 하세요:" >&2
+    echo "  ls -R $DATASET_ROOT" >&2
+    echo "  rm -r $DATASET_ROOT" >&2
+    exit 1
+  fi
   if [ "$FIRST" != "--first" ]; then
     echo "데이터셋이 아직 없습니다: $DATASET_ROOT" >&2
     echo "처음이면 --first 를 붙이세요:  $0 $KEY $EPISODES --first" >&2
