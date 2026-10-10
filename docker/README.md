@@ -19,13 +19,13 @@ SmolVLA / ACT 학습을 GPU 서버(예: RTX 5090 32GB)에서 돌릴 때 씁니�
 | 공유 메모리 | 켜기, 16GB (데이터 로더) |
 | 포트·헬스 체크 URL·SSH 키·API 키·환경 변수 | 비워 둠 (웹 서버가 없어서 헬스 체크를 넣으면 재시작됨) |
 
-웹 터미널에서:
+웹 터미널에서 (`python:3.12-slim` 에는 `curl` 이 없어서 먼저 깝니다):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cosmo0511/xlerobot/main/docker/setup_cloud.sh | bash
+apt-get update && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/cosmo0511/xlerobot/main/docker/setup_cloud.sh | bash
 source /workspace/env.sh
 STEPS=20 OUTPUT_DIR=/tmp/probe ./scripts/train.sh act      # 메모리 확인
-tmux new -s train    # 없으면: apt-get install -y tmux
+tmux new -s train    # setup_cloud.sh 가 tmux 도 깝니다
 ./scripts/train.sh smolvla
 ```
 

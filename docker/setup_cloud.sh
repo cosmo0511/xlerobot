@@ -7,7 +7,9 @@
 # 띄우고 웹 터미널에서 이걸 한 번 실행합니다. 결과는 docker/Dockerfile.train 과
 # 같습니다 (lerobot v0.6.0 + vendor 패치 + torch 2.11 + [training,smolvla]).
 #
-#   curl -fsSL https://raw.githubusercontent.com/cosmo0511/xlerobot/main/docker/setup_cloud.sh | bash
+#   apt-get update && apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/cosmo0511/xlerobot/main/docker/setup_cloud.sh | bash
+#
+# (python:3.12-slim 에는 curl 이 없어서 먼저 깝니다. 컨테이너 안은 root 라 sudo 필요 없음)
 #
 # 전부 영구 볼륨(/workspace) 안에 깔립니다. 컨테이너가 재시작돼도 다시 안 깔아도 되고,
 # 학습 결과도 남습니다. 다시 들어왔을 때는:
@@ -31,7 +33,7 @@ echo "== 1/5 시스템 패키지 (git, ffmpeg)"
 if command -v apt-get >/dev/null; then
   SUDO=""; [ "$(id -u)" = "0" ] || SUDO="sudo"
   $SUDO apt-get update -qq
-  $SUDO apt-get install -y -qq --no-install-recommends git ffmpeg libglib2.0-0 build-essential curl >/dev/null
+  $SUDO apt-get install -y -qq --no-install-recommends git ffmpeg libglib2.0-0 build-essential curl tmux >/dev/null
 fi
 
 echo "== 2/5 가상환경 ($WORKSPACE/venv)"
