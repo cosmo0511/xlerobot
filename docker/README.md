@@ -5,6 +5,35 @@ SmolVLA / ACT 학습을 GPU 서버(예: RTX 5090 32GB)에서 돌릴 때 씁니�
 (`RUNNING.md` 3단계). 학습 규칙(둘 다 batch 16 / 80k, 평가는 마지막 체크포인트)은
 `scripts/train.sh` 에 고정돼 있어서 어느 쪽이든 같은 조건입니다.
 
+## 클라우드 콘솔(AIEEV Air Container 등)에서 — 이미지 빌드 없이
+
+콘솔이 공개 이미지 주소만 받으면, 이미지를 만들어 올리지 말고 `python:3.12-slim` 으로
+띄운 뒤 웹 터미널에서 `setup_cloud.sh` 를 한 번 돌리세요. 결과는 아래 Dockerfile 과 같습니다.
+
+| 항목 | 값 |
+|---|---|
+| 이미지 | `python:3.12-slim` (Docker Hub, 공개) |
+| GPU / 레플리카 | RTX 5090 / **1** |
+| 영구 볼륨 | 켜기, 마운트 `/workspace`, 50GB (환경·데이터셋 3GB·체크포인트 ~10GB) |
+| 시작 명령 | `sleep infinity` (기본 명령은 바로 끝나서 컨테이너가 꺼짐) |
+| 공유 메모리 | 켜기, 16GB (데이터 로더) |
+| 포트·헬스 체크 URL·SSH 키·API 키·환경 변수 | 비워 둠 (웹 서버가 없어서 헬스 체크를 넣으면 재시작됨) |
+
+웹 터미널에서:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cosmo0511/xlerobot/main/docker/setup_cloud.sh | bash
+source /workspace/env.sh
+STEPS=20 OUTPUT_DIR=/tmp/probe ./scripts/train.sh act      # 메모리 확인
+tmux new -s train    # 없으면: apt-get install -y tmux
+./scripts/train.sh smolvla
+```
+
+원본 PC 에서 빈 `python:3.12-slim` 컨테이너로 이 순서를 그대로 돌려 Hub 데이터셋으로 ACT 5스텝까지
+확인했습니다 (2026-10-10). 결과는 `/workspace/xlerobot/outputs/train/` — 영구 볼륨이라 재시작해도 남습니다.
+
+## 직접 Docker 를 쓸 수 있는 서버에서
+
 ## 0. 서버에서 확인할 것
 
 ```bash
