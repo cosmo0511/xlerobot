@@ -113,8 +113,10 @@ LEADER_RIGHT_PORT="/dev/so101_leader_right"
 # 바꾸면 캘리브레이션을 다시 하라고 나옵니다.
 LEADER_ID="bi_so101_leader"
 
-# 바퀴 키. 실제로 쓰던 배치 그대로입니다 (기본값의 q/e 회전 대신 z/x).
-TELEOP_KEYS='{"forward":"w","backward":"s","left":"a","right":"d","rotate_left":"z","rotate_right":"x","speed_up":"c","speed_down":"v","quit":"t"}'
+# 바퀴 키 배치는 teleop_keys.sh 한 곳에서 정합니다 — 연습(run_4cam.sh teleop)과
+# 녹화가 같은 키를 써야 손에 익은 게 안 틀어집니다.  -> TELEOP_KEYS
+# shellcheck source=scripts/teleop_keys.sh
+source "$SCRIPT_DIR/teleop_keys.sh"
 
 # 데모 규칙: 60초 초과는 재녹화. 60초에 자동으로 끝났으면 = 초과 → ← 로 다시.
 EPISODE_TIME_S=60      # 에피소드 하나 최대 길이(초)

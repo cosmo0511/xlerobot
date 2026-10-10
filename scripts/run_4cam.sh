@@ -21,6 +21,7 @@
 #
 #   💻 PC 에서 (매번, 녹화 전)
 #     ./scripts/run_4cam.sh check       녹화와 같은 경로로 검증
+#     ./scripts/run_4cam.sh teleop      팔·바퀴 움직여보기 (데이터 안 남음)
 #     ./scripts/run_4cam.sh record red 8 --first
 #
 #   💻 PC 에서 (아무 때나)
@@ -96,6 +97,31 @@ case "$cmd" in
   # --- 💻 PC: 검증 -----------------------------------------------------------
   check)
     exec "$PY" "$PREFLIGHT" 4cam "$@"
+    ;;
+
+  # --- 💻 PC: 연습 (데이터 안 남음) ------------------------------------------
+  teleop)
+    # 녹화와 **같은 로봇·같은 텔레옵·같은 키**로 움직여만 봅니다. 데이터는 안 남습니다.
+    # 키를 안 넘기면 lerobot 기본값(회전 q/e, 속도 r/f)으로 돌아서 손에 익은 게
+    # 틀어집니다. 그래서 record.sh 와 같은 파일에서 가져옵니다.
+    # shellcheck source=scripts/teleop_keys.sh
+    source "$SCRIPT_DIR/teleop_keys.sh"
+    PI_HOST="${PI_HOST:-xlerobot2.local}"
+    echo "파이($PI_HOST)의 host.sh 가 떠 있어야 합니다."
+    echo
+    echo "  g        바퀴 잠금 해제/잠금 — **시작은 잠김**입니다. 한 번 눌러야 움직입니다"
+    echo "  w/s/a/d  앞/뒤/좌/우      z/x 회전      c/v 속도      t 종료"
+    echo
+    exec lerobot-teleoperate \
+      --robot.type=bi_so_base_client \
+      --robot.remote_ip="$PI_HOST" \
+      --robot.id=bi_so101 \
+      --teleop.type=bi_so_base_leader \
+      --teleop.id=bi_so101_leader \
+      --teleop.left_arm_config.port=/dev/so101_leader_left \
+      --teleop.right_arm_config.port=/dev/so101_leader_right \
+      --teleop.teleop_keys="$TELEOP_KEYS" \
+      "$@"
     ;;
 
   # --- 💻 PC: 녹화 -----------------------------------------------------------

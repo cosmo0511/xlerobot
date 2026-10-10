@@ -358,6 +358,22 @@ for fname in ("arm_node.py", "view_cameras.py", "preflight_cameras.py"):
 ok("카메라 설정을 만드는 곳이 전부 camera_kwargs 한 곳을 거침")
 
 
+# --- 11e. 연습과 녹화의 바퀴 키가 같다 -------------------------------------------
+# lerobot 기본값은 회전 q/e, 속도 r/f 입니다. teleop_keys 를 안 넘기면 그걸로
+# 돌아서, 연습 때 익힌 z/x·c/v 가 녹화에서(또는 그 반대로) 안 먹힙니다.
+# 실제로 그랬습니다. 그래서 정의를 한 파일에 두고 둘 다 source 합니다.
+keys_sh = (pathlib.Path(__file__).resolve().parent / "scripts" / "teleop_keys.sh").read_text(
+    encoding="utf-8")
+assert '"rotate_left":"z"' in keys_sh and '"speed_up":"c"' in keys_sh, keys_sh
+for name, body in (("record.sh", code), ("run_4cam.sh", r4code)):
+    assert "teleop_keys.sh" in body, f"{name} 이 teleop_keys.sh 를 안 씁니다"
+    assert "TELEOP_KEYS" not in body.replace('"$TELEOP_KEYS"', ""), \
+        f"{name} 이 키 배치를 직접 적고 있습니다 — teleop_keys.sh 를 쓰세요"
+    assert '--teleop.teleop_keys="$TELEOP_KEYS"' in body, \
+        f"{name} 이 teleop_keys 를 안 넘깁니다 — lerobot 기본값(q/e, r/f)으로 돕니다"
+ok("연습(teleop)과 녹화가 같은 바퀴 키를 씀 (z/x 회전, c/v 속도)")
+
+
 # --- 12. 녹화에 바퀴가 들어간다 -------------------------------------------------
 # bi_so_follower + bi_so_leader 로 찍으면 액션이 팔 12차원뿐이라 정책이 주행을
 # 못 배웁니다. 바퀴(x.vel/y.vel/theta.vel)는 bi_so_base_leader 가 키보드에서
