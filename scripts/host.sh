@@ -51,6 +51,24 @@ if ! python3 "$CAM_TOOL" "$CAMERA_SET" --check; then
   exit 1
 fi
 
+# 어두우면 fps 를 낮추는 자동 노출 옵션을 끕니다. 손목 카메라는 화면 대부분이
+# 검정 그리퍼라 카메라가 "어둡다"고 보고 노출을 늘려, 방이 밝아도 30 -> 20fps 로
+# 떨어졌습니다 (left_wrist, 2026-10-10 실측). 이 값은 재부팅·재연결 때 돌아가므로
+# 매번 겁니다. 노출 자동 조절 자체는 그대로 둡니다 — fps 만 고정.
+if command -v v4l2-ctl >/dev/null; then
+  while read -r dev; do
+    [ -e "$dev" ] || continue
+    for ctrl in exposure_dynamic_framerate exposure_auto_priority; do
+      if v4l2-ctl -d "$dev" -l 2>/dev/null | grep -q "^ *$ctrl "; then
+        v4l2-ctl -d "$dev" -c "$ctrl=0" || echo "⚠ $dev: $ctrl=0 실패" >&2
+      fi
+    done
+  done < <(python3 "$CAM_TOOL" "$CAMERA_SET" --devices)
+else
+  echo "⚠ v4l2-ctl 이 없어 fps 고정을 못 겁니다 (어두우면 fps 가 떨어질 수 있음):" >&2
+  echo "  sudo apt install v4l-utils" >&2
+fi
+
 # 파이 쪽 로봇은 bi_so_follower 를 상속하므로 접두사를 lerobot 이 붙입니다 (per_arm).
 mapfile -t CAM_ARGS < <(python3 "$CAM_TOOL" "$CAMERA_SET" --record-args --robot-type=bi_so_base_follower)
 

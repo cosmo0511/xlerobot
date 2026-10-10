@@ -377,6 +377,12 @@ def main(argv: list[str]) -> int:
         print(describe(cams))
         return 0
 
+    if "--devices" in flags:
+        # host.sh 가 장치마다 v4l2 설정을 걸 때 씁니다. 한 줄에 하나.
+        for spec in flat_cameras(cams).values():
+            print(spec["index_or_path"])
+        return 0
+
     if "--keys" in flags:
         for key in observation_keys(cams):
             print(key)
