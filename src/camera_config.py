@@ -227,6 +227,13 @@ def _spec_json(spec: dict) -> str:
     })
 
 
+def flat_cameras(cams: dict) -> dict:
+    """최종 이름(top, left_wrist ...) -> spec. flat 레이아웃과 클라이언트가 씁니다."""
+    return {f"{prefix}{name}": spec
+            for block, prefix in BLOCKS.items()
+            for name, spec in (cams.get(block) or {}).items()}
+
+
 def record_args(cams: dict, layout: str = DEFAULT_LAYOUT) -> list[str]:
     """lerobot-record 에 넘길 `--robot...cameras=...` 인자들.
 
@@ -239,11 +246,8 @@ def record_args(cams: dict, layout: str = DEFAULT_LAYOUT) -> list[str]:
 
     if layout == "flat":
         # 접두사가 자동으로 안 붙으므로 최종 이름을 그대로 씁니다.
-        body = ", ".join(
-            f"{prefix}{name}: " + _spec_json(spec)
-            for block, prefix in BLOCKS.items()
-            for name, spec in (cams.get(block) or {}).items()
-        )
+        body = ", ".join(f"{name}: " + _spec_json(spec)
+                         for name, spec in flat_cameras(cams).items())
         return [f"--robot.cameras={{ {body} }}"]
 
     # per_arm: 블록별로 인자를 나눠 넘기고 접두사는 lerobot 이 붙입니다.

@@ -16,9 +16,11 @@
 
 | | 기기 | 담당 | 프로세스 |
 |---|---|---|---|
-| 🦾 | Pi-A | SO-101 양팔 + 카메라 (구성은 아래) | `python src/arm_node.py` |
-| 🛞 | Pi-B | 르키위 베이스 + 라이다 + Nav2 | `nav2_bringup` + `python src/nav_node.py` |
-| 💻 | PC | SmolVLA 추론 + 에이전트 | `lerobot-policy-server` + `python src/main.py` |
+| 🍓 | 라즈베리파이 | SO-101 양팔 + 바퀴 3개(오른팔 버스) + 카메라, USB | `./scripts/host.sh` |
+| 💻 | PC | 녹화 / SmolVLA 추론 + 추론 노드 + 에이전트 | `./scripts/record.sh` 또는 `lerobot-policy-server` + `python src/arm_node.py` + `python src/main.py` |
+
+PC 와 파이는 무선으로 붙습니다. 패치된 lerobot 0.6 이 둘 다 필요합니다 → [vendor/README.md](vendor/README.md).
+(예전 Pi-A / Pi-B 두 대 구성은 폐기. Nav2 쪽 문서·코드는 아직 그 구성 기준입니다.)
 
 ## 지금 어디까지 돌아가나
 

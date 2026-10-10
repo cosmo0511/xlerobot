@@ -82,12 +82,20 @@ v0.6.0 기준 35 files, +2471 / -21 (기존 파일 15개 수정 + **새 파일 2
   전역이라 다른 창에서 친 wasd 로 로봇이 움직이는 걸 막으려고).
 - 실제로 쓰던 키: w/s/a/d 이동, **z/x 회전, c/v 속도**, t 종료 (`record.sh` 에 고정).
 
-### 녹화 경로 (확정)
+### 녹화·추론 경로 (확정) — 둘 다 같은 호스트에 같은 클래스로 붙습니다
 
 ```
 🍓 파이:  ./scripts/host.sh      bi_so_base_host — 팔·바퀴·카메라를 엶, ZMQ 5555/5556
-💻 PC  :  ./scripts/record.sh    bi_so_base_client + bi_so_base_leader
+💻 PC  :  ./scripts/record.sh    bi_so_base_client + bi_so_base_leader     (녹화)
+💻 PC  :  lerobot-policy-server + python src/arm_node.py (bi_so_base_client) (추론)
 ```
+
+- 녹화와 추론이 **같은 로봇 클래스**라서 관측·액션 키, 순서(15차원), 카메라 이름,
+  이미지(파이에서 JPEG 압축된 것)까지 같습니다. `tests_smoke.py` 13번이 지킵니다.
+- 추론 노드·정책 서버·에이전트가 전부 PC 에 있으므로 무선을 타는 건 녹화 때와
+  똑같은 호스트↔클라이언트 트래픽뿐입니다. 무선이 끊기면 호스트 워치독(500ms)이 바퀴를 세웁니다.
+- `arm_node.py` 는 에피소드가 끝나면 항상 바퀴를 0 으로 보냅니다 (정책 마지막 액션이 주행이어도).
+- 파이의 팔 포트·캘리브레이션 id 는 `config/robot.yaml` 의 `host:` 블록 한 곳 (아직 비어 있음).
 
 - `remote_ip` 기본값 `xlerobot2.local` (`PI_HOST=` 로 변경). 실제 쓰던 명령에서 가져옴.
 - 리더: `/dev/so101_leader_{left,right}`, id `bi_so101_leader`
@@ -106,9 +114,14 @@ v0.6.0 기준 35 files, +2471 / -21 (기존 파일 15개 수정 + **새 파일 2
   (예전 명령의 카메라 **이름**도 `cam_top` 등이었지만, 우리 데이터는 아직 없으니
   yaml 의 `top / left_wrist / right_wrist` 로 통일했습니다.)
 - **파이의 팔로워 포트와 id** — 이 PC 에서 확인 불가. `host.sh` 는 기본값 없이 env 로 받습니다.
-- **추론 쪽(`src/arm_node.py`, `config/robot.yaml`)은 아직 옛 구조**입니다
-  (Pi-A/Pi-B, `bi_so_follower`, 팔 12차원). 정책은 15차원 액션으로 학습되므로
-  추론도 `bi_so_base_client` 로 바꿔야 바퀴 출력까지 로봇에 갑니다. 다음 작업.
+- **파이에서 `bi_so_base_follower` 를 직접 쓰면 안 됩니다 (패치 버그).** 바퀴 모터가
+  오른팔 버스에 추가되면서 `_motors_ft` 에 `right_base_*_wheel.pos` 3개가 끼어
+  18차원이 됩니다. 호스트 경유(녹화·추론)는 15차원이라 영향 없음. 직접 쓸 일이 생기면
+  `bi_so_base_follower.py` 의 `_motors_ft` 를 `self.right_arm_motors` 기준으로 고쳐야 합니다.
+- **자율주행(Nav2, `nav_node.py`)은 지금 구조와 안 맞습니다.** 바퀴가 이제 오른팔 버스에
+  있고 호스트가 독점하므로, 예전 Pi-B 의 Nav2 가 바퀴를 따로 몰 수 없습니다.
+  지금은 정책이 바퀴까지 직접 냅니다(텔레옵 주행을 학습). `main.py` 의 이동 단계를
+  어떻게 할지는 아직 안 정함.
 
 ## 환경: lerobot 0.6 (venv)
 

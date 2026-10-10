@@ -1,44 +1,48 @@
 """
-arm_node.py — 🦾 Pi-A(양팔 라즈베리파이)에서 상시 실행하는 프로세스.
+arm_node.py — 💻 PC 에서 실행하는 추론 노드 (양팔 + 바퀴).
 
-    실행:  python src/arm_node.py
+    먼저 라즈베리파이에서:  ./scripts/host.sh
+    PC 에서:               lerobot-policy-server --host=127.0.0.1 --port=8080
+                           python src/arm_node.py
 
 ■ 이 파일이 하는 일
 ---------------------------------------------------------------------------
-1. 양팔(bi_so_follower) + 카메라를 USB 로 직접 엽니다. Pi-A 가 팔의 유일한 주인입니다.
-   카메라 목록은 robot.yaml 의 arms.camera_set -> config/cameras.<이름>.yaml.
-2. 💻 GPU PC 의 SmolVLA 추론 서버에 gRPC 로 붙습니다 (lerobot async inference).
-3. 에이전트(PC)가 보내는 명령을 ZMQ 로 받아서 처리합니다.
+1. 파이의 bi_so_base_host 에 `bi_so_base_client` 로 붙습니다 (ZMQ 5555/5556).
+   **녹화(scripts/record.sh)와 똑같은 로봇 클래스**입니다. 그래서 관측·액션 키와
+   순서(15차원: 팔 12 + x.vel/y.vel/theta.vel), 카메라 이름, 이미지(파이에서 JPEG
+   으로 한 번 압축된 것)까지 학습 데이터와 같습니다.
+   카메라 이름은 robot.yaml 의 arms.camera_set -> config/cameras.<이름>.yaml.
+2. 같은 PC 의 SmolVLA 추론 서버에 gRPC 로 붙습니다 (lerobot async inference).
+3. 에이전트가 보내는 명령을 ZMQ 로 받아서 처리합니다.
 
        {"cmd": "run", "task": "Pick up the red dice", "max_seconds": 60,
         "expect_holding": true}
          -> 그 태스크로 한 에피소드 실행 -> {"status": "done"|"failed", ...}
          -> expect_holding=true 면 끝나고 그리퍼를 확인해서 못 잡았으면 failed
+         -> 정책이 바퀴도 움직입니다. 에피소드가 끝나면 바퀴를 항상 세웁니다.
 
-       {"cmd": "park", "hold_gripper": false}  -> 팔을 주행 자세로 접음
+       {"cmd": "park", "hold_gripper": false}  -> 팔을 주행 자세로 접음 (바퀴 정지)
                                                  hold_gripper=true 면 그리퍼는 그대로
                                                  (물건을 든 채로 이동할 때)
        {"cmd": "grippers"} -> 양쪽 그리퍼 현재값 (grasp_check 임계값 정할 때)
        {"cmd": "ping"}   -> 살아 있는지 확인
 
-■ 왜 이 방향인가 (이미지를 Pi 에서 PC 로 보냅니다)
+■ 왜 파이가 아니라 PC 에서 도나
 ---------------------------------------------------------------------------
-SmolVLA 는 한 번 추론할 때마다 행동을 **50개씩 묶어서(action chunk)** 돌려줍니다.
-그래서 매 프레임 이미지를 보낼 필요가 없습니다. 큐가 절반 이하로 줄 때만 관측을
-보내므로 실제 전송은 **약 0.8초에 한 번**입니다.
+녹화가 이미 이 경로(파이 호스트 → 무선 → PC 클라이언트, 카메라 30fps)로 돌고
+있습니다. 추론을 같은 경로로 돌리면 "녹화 때와 추론 때 로봇이 다르게 보이는"
+문제가 구조적으로 안 생깁니다.
 
-    30fps 로 이미지 전송  ->  약 80MB/s  (WiFi 불가)
-    청크 방식             ->  약 2MB/s   (문제 없음)
+파이에서 `bi_so_base_follower` 를 직접 여는 방식은 **지금 패치로는 안 됩니다.**
+바퀴 모터가 오른팔 버스에 추가되면서 오른팔 관절 목록에도 잡혀, 액션·관측이
+18차원(right_base_*_wheel.pos 포함)이 됩니다. 녹화 데이터는 15차원이라 안 맞습니다.
 
-팔 제어 루프(30Hz)는 Pi-A 에서 로컬로 돌기 때문에 네트워크가 잠깐 끊겨도
-큐에 남은 행동을 계속 수행합니다. 이게 lerobot async inference 의 설계 의도입니다.
+무선이 끊기면 파이 호스트의 워치독(500ms)이 바퀴를 세웁니다.
 
 ■ 파킹 포즈에 대해
 ---------------------------------------------------------------------------
-Pi 가 둘이라 주행(Pi-B)과 조작(Pi-A)은 서로 다른 하드웨어입니다. 동시에 움직여도
-충돌이 나지 않습니다. 다만 **이동 중에 팔이 벌어져 있으면 문틀·가구에 부딪히므로**,
-에이전트가 주행 전에 항상 `park` 를 먼저 호출합니다. 이건 하드웨어 제약이 아니라
-안전 규칙입니다.
+이동 중에 팔이 벌어져 있으면 문틀·가구에 부딪히므로, 에이전트가 주행 전에 항상
+`park` 를 먼저 호출합니다. 이건 하드웨어 제약이 아니라 안전 규칙입니다.
 """
 
 from __future__ import annotations
@@ -58,7 +62,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from camera_config import (  # noqa: E402  (sys.path 조정 뒤라서)
-    missing_devices,
+    flat_cameras,
     observation_keys,
     resolve_cameras,
 )
@@ -69,54 +73,41 @@ logger = logging.getLogger("arm_node")
 # =============================================================================
 # 로봇 + 정책 클라이언트
 # =============================================================================
+BASE_KEYS = ("x.vel", "y.vel", "theta.vel")
+BASE_STOP = dict.fromkeys(BASE_KEYS, 0.0)
+
+
 def build_robot_config(arms_cfg: dict):
-    """robot.yaml 의 arms 블록 -> BiSOFollowerConfig
+    """robot.yaml 의 arms 블록 -> BiSOBaseClientConfig
 
     카메라는 arms.camera_set 이 가리키는 config/cameras.<이름>.yaml 에서 옵니다.
-    **녹화(scripts/record.sh)와 같은 파일**이라서 카메라 이름이 어긋날 수 없습니다.
+    **녹화(scripts/record.sh)와 같은 파일, 같은 로봇 클래스**라서 키가 어긋날 수 없습니다.
+    장치는 파이에 있으므로 여기서는 열지 않습니다 (장치 확인은 host.sh 가 파이에서).
     """
     from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
-    from lerobot.robots.bi_so_follower import BiSOFollowerConfig
-    from lerobot.robots.so_follower import SOFollowerConfig
+    from lerobot.robots.bi_so_follower import BiSOBaseClientConfig
 
     cam_cfg = resolve_cameras(arms_cfg)
     logger.info("카메라 구성 %s — 관측 키: %s",
                 arms_cfg.get("camera_set", "(robot.yaml 인라인)"),
                 ", ".join(observation_keys(cam_cfg)))
 
-    absent = missing_devices(cam_cfg)
-    if absent:
-        raise RuntimeError(
-            f"카메라 장치가 없습니다: {', '.join(absent)}\n"
-            "lerobot-find-cameras 로 실제 인덱스를 확인하고 "
-            f"config/cameras.{arms_cfg.get('camera_set')}.yaml 을 고치세요."
+    # 클라이언트는 이 이름으로 파이가 보낸 프레임을 받습니다 (flat 레이아웃).
+    # index_or_path 는 클라이언트에서 안 쓰지만 설정 형식상 필요합니다.
+    cameras = {
+        name: OpenCVCameraConfig(
+            index_or_path=c["index_or_path"],
+            width=c.get("width", 640),
+            height=c.get("height", 480),
+            fps=c.get("fps", 30),
         )
+        for name, c in flat_cameras(cam_cfg).items()
+    }
 
-    def cams(block: dict | None) -> dict:
-        return {
-            name: OpenCVCameraConfig(
-                index_or_path=c["index_or_path"],
-                width=c.get("width", 640),
-                height=c.get("height", 480),
-                fps=c.get("fps", 30),
-            )
-            for name, c in (block or {}).items()
-        }
-
-    return BiSOFollowerConfig(
-        left_arm_config=SOFollowerConfig(
-            port=arms_cfg["left_port"],
-            id=f"{arms_cfg['id']}_left",
-            cameras=cams(cam_cfg.get("left_cameras")),
-        ),
-        right_arm_config=SOFollowerConfig(
-            port=arms_cfg["right_port"],
-            id=f"{arms_cfg['id']}_right",
-            cameras=cams(cam_cfg.get("right_cameras")),
-        ),
-        # 팔에 안 묶인 카메라(탑캠·베이스캠)는 여기. 이름에 접두사가 안 붙습니다.
-        cameras=cams(cam_cfg.get("top_cameras")),
-        id=arms_cfg["id"],
+    return BiSOBaseClientConfig(
+        remote_ip=arms_cfg["remote_ip"],
+        cameras=cameras,
+        id=arms_cfg.get("id"),
     )
 
 
@@ -160,6 +151,19 @@ class ArmController:
         self.client.start_barrier.wait()
         logger.info("팔 준비 완료")
 
+    def _observe(self, timeout_s: float = 2.0) -> dict:
+        """관절값이 들어 있는 관측. 클라이언트는 첫 메시지를 받기 전엔 비어 있습니다."""
+        deadline = time.perf_counter() + timeout_s
+        while True:
+            obs = self.client.robot.get_observation()
+            if any(k.endswith(".pos") for k in obs) or time.perf_counter() > deadline:
+                return obs
+            time.sleep(0.02)
+
+    def stop_base(self) -> None:
+        """바퀴만 세웁니다. 팔 키를 안 보내면 호스트는 팔을 그 자리에 둡니다."""
+        self.client.robot.send_action(dict(BASE_STOP))
+
     # --- 파킹 ------------------------------------------------------------
     def park(self, hold_gripper: bool = False) -> dict:
         """주행 자세로 부드럽게 접습니다. 목표까지 선형 보간해서 이동.
@@ -182,7 +186,7 @@ class ArmController:
 
         duration = float(self.arms_cfg.get("park_seconds", 2.5))
         robot = self.client.robot
-        obs = robot.get_observation()
+        obs = self._observe()
         start = {k: float(obs[k]) for k in target if k in obs}
         missing = [k for k in target if k not in obs]
         if missing:
@@ -193,14 +197,16 @@ class ArmController:
         steps = max(1, int(duration * self.fps))
         for i in range(1, steps + 1):
             a = i / steps
-            robot.send_action({k: start[k] + (target[k] - start[k]) * a for k in target})
+            # 바퀴는 0 으로 같이 보냅니다 — 파킹 중에 굴러가면 안 됩니다.
+            robot.send_action({**BASE_STOP,
+                               **{k: start[k] + (target[k] - start[k]) * a for k in target}})
             time.sleep(dt)
         return {"status": "done", "message": "팔 파킹 완료"}
 
     # --- 잡았는지 판정 ------------------------------------------------------
     def gripper_positions(self) -> dict:
         """양쪽 그리퍼의 현재 값. grasp_check 임계값을 정할 때 쓰세요."""
-        obs = self.client.robot.get_observation()
+        obs = self._observe()
         return {k: round(float(v), 2) for k, v in obs.items() if k.endswith("gripper.pos")}
 
     def _is_holding(self) -> tuple[bool, str]:
@@ -216,7 +222,7 @@ class ArmController:
             # 설정이 없으면 판정을 건너뜁니다(기존 동작 유지).
             return True, "grasp_check 미설정 — 판정 생략"
 
-        obs = self.client.robot.get_observation()
+        obs = self._observe()
         if joint not in obs:
             return False, f"grasp_check.joint {joint!r} 가 로봇 관측에 없습니다"
 
@@ -266,6 +272,12 @@ class ArmController:
         except Exception as e:
             logger.exception("에피소드 실행 중 예외")
             return {"status": "failed", "message": f"실행 오류: {e}"}
+        finally:
+            # 정책의 마지막 액션이 주행 중이었으면 바퀴가 계속 돕니다. 항상 세웁니다.
+            try:
+                self.stop_base()
+            except Exception:
+                logger.exception("바퀴 정지 명령 실패 — 호스트 워치독(500ms)에 맡깁니다")
 
         if steps == 0:
             return {"status": "failed",
@@ -331,7 +343,7 @@ def serve(controller: ArmController, bind_address: str) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Pi-A 양팔 노드")
+    ap = argparse.ArgumentParser(description="PC 추론 노드 (양팔 + 바퀴)")
     ap.add_argument("--config", default=str(PROJECT_ROOT / "config" / "robot.yaml"))
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()

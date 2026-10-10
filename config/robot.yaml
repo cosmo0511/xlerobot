@@ -1,24 +1,36 @@
 # =============================================================================
 # robot.yaml — 하드웨어 / 네트워크 설정
 # =============================================================================
-# 기기가 3대입니다. 각 블록이 어느 기기에서 읽히는지 표시해뒀습니다.
+# 기기 구성 (CLAUDE.md "하드웨어 구성" 참고):
 #
-#   🦾 Pi-A  : 양팔 라즈베리파이 (SO-101 x2, 리더암, 카메라 3개)
-#   🛞 Pi-B  : 르키위 라즈베리파이 (바퀴, 라이다, ROS2/Nav2)
-#   💻 PC    : GPU PC (SmolVLA 추론 서버 + 에이전트)
+#   🍓 파이 : 로봇(양팔 + 바퀴 3개 + 카메라)이 USB 로 붙음. scripts/host.sh 만 실행
+#   💻 PC   : 녹화(record.sh), 추론 서버, 추론 노드(arm_node.py), 에이전트
+#
+#   (예전 Pi-A / Pi-B 두 대 구성의 흔적이 navigation 블록에 남아 있습니다.)
 #
 # API 키는 여기 쓰지 말 것. 환경변수로만 넘깁니다.
 
-# --- 🦾 Pi-A : 양팔 --------------------------------------------------------
-# arm_node.py 가 Pi-A 에서 이 설정으로 로봇을 열고, ZMQ 제어 소켓을 엽니다.
-arms:
-  # 에이전트(PC)가 Pi-A 에 명령을 보낼 주소
-  control_address: "tcp://192.168.0.101:5580"   # ← Pi-A 의 IP
-  bind_address: "tcp://0.0.0.0:5580"            # Pi-A 에서 listen 할 주소
+# --- 🍓 파이 : 로봇 호스트 (scripts/host.sh 가 읽음) --------------------------
+# 녹화와 추론이 둘 다 이 호스트를 통하므로 **캘리브레이션이 한 벌**입니다.
+# 아직 파이에서 확인 안 한 값이라 비워 뒀습니다. 파이에서 확인해서 채우세요.
+#   포트:  ls -l /dev/serial/by-id/   또는 lerobot-find-port
+#   id  :  ~/.cache/huggingface/lerobot/calibration/robots/bi_so_base_follower/
+#          에 있는 <id>_left.json / <id>_right.json 의 <id>
+# 환경변수 FOLLOWER_LEFT_PORT / FOLLOWER_RIGHT_PORT / FOLLOWER_ID 가 있으면 그게 우선.
+host:
+  left_port:  null              # 왼팔 follower
+  right_port: null              # 오른팔 follower (바퀴 ID 7/8/9 도 이 버스)
+  id:         null              # 캘리브레이션 파일 이름
 
-  left_port:  "/dev/ttyACM0"    # 왼팔 follower
-  right_port: "/dev/ttyACM1"    # 오른팔 follower
-  id: "home_bi"                 # 캘리브레이션 파일 이름
+# --- 💻 PC : 추론 노드 (src/arm_node.py) -------------------------------------
+# 녹화(record.sh)와 같은 bi_so_base_client 로 파이 호스트에 붙습니다.
+arms:
+  remote_ip: "xlerobot2.local"  # 파이 (record.sh 의 PI_HOST 와 같아야 함)
+  id: "bi_so101"                # record.sh 의 ROBOT_ID 와 같게
+
+  # 에이전트(main.py)와 arm_node.py 가 같은 PC 에서 돕니다.
+  control_address: "tcp://127.0.0.1:5580"
+  bind_address: "tcp://127.0.0.1:5580"
 
   # --- 카메라 구성 ---------------------------------------------------------
   # 카메라 목록은 config/cameras.<이름>.yaml 에 있습니다.
@@ -37,8 +49,7 @@ arms:
   camera_set: "3cam"
 
   # 주행 중 팔 자세(파킹 포즈).
-  # Pi 가 둘이라 주행과 조작은 별개 하드웨어지만, 이동 중 팔이 벌어져 있으면
-  # 문틀·가구에 부딪힙니다. 이동 전에 항상 이 자세로 접습니다.
+  # 이동 중 팔이 벌어져 있으면 문틀·가구에 부딪힙니다. 이동 전에 항상 이 자세로 접습니다.
   # 값은 lerobot-find-joint-limits 로 실제 로봇에서 확인해 채우세요.
   travel_pose:
     left_shoulder_pan.pos:   0.0
@@ -63,7 +74,7 @@ arms:
   # ※ 실제 값은 주사위를 쥔 채로 아래를 돌려서 확인하고 채우세요.
   #     python src/arm_node.py  를 띄운 뒤 다른 터미널에서
   #     python -c "import zmq,json;s=zmq.Context().socket(zmq.REQ);\
-  #       s.connect('tcp://192.168.0.101:5580');s.send_string(json.dumps({'cmd':'grippers'}));\
+  #       s.connect('tcp://127.0.0.1:5580');s.send_string(json.dumps({'cmd':'grippers'}));\
   #       print(s.recv_string())"
   grasp_check:
     joint: "right_gripper.pos"
@@ -72,17 +83,16 @@ arms:
 
 # --- 💻 PC : SmolVLA 추론 서버 ----------------------------------------------
 # lerobot 의 async inference 를 씁니다.
-#   PC 에서:    lerobot-policy-server --host=0.0.0.0 --port=8080
-#   Pi-A 에서:  python src/arm_node.py     (이 주소로 붙습니다)
+#   PC 에서:  lerobot-policy-server --host=127.0.0.1 --port=8080
+#   PC 에서:  python src/arm_node.py     (같은 PC 라서 gRPC 는 무선을 안 탑니다)
 policy:
-  server_address: "192.168.0.200:8080"   # ← GPU PC 의 IP
+  server_address: "127.0.0.1:8080"       # 같은 PC
   type: "smolvla"
   path: "outputs/train/smolvla_home/checkpoints/last/pretrained_model"
   device: "cuda"                # 서버(PC) 쪽 장치
   fps: 30                       # 데모 수집 fps 와 동일해야 함
   actions_per_chunk: 50         # 한 번에 받아오는 행동 개수
-  # 큐가 이 비율 이하로 줄면 새 관측을 보냅니다. 0.5 면 약 25스텝(≈0.8초)에 한 번.
-  # 이미지가 30fps 로 계속 흐르는 게 아니라서 WiFi 로도 충분합니다.
+  # 큐가 이 비율 이하로 줄면 새 관측을 정책 서버로 보냅니다. 0.5 면 약 25스텝(≈0.8초)에 한 번.
   chunk_size_threshold: 0.5
 
 # --- 🛞 Pi-B : 자율주행(Nav2) -----------------------------------------------

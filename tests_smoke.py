@@ -315,4 +315,30 @@ for cams in (cam3, cam4):
 ok("host.sh(파이)와 record.sh(PC)가 같은 yaml 의 같은 카메라 이름을 씀")
 
 
+# --- 13. 추론은 녹화와 같은 로봇으로 ---------------------------------------------
+# 정책은 녹화 때 본 키·순서(15차원)로만 행동을 냅니다. 추론 쪽 로봇 클래스나
+# 접속 정보가 녹화와 다르면 팔이 엉뚱하게 움직이거나 바퀴가 안 움직입니다.
+import re  # noqa: E402
+
+arm_src = (pathlib.Path(__file__).resolve().parent / "src" / "arm_node.py").read_text(
+    encoding="utf-8")
+assert "BiSOBaseClientConfig" in arm_src, "arm_node.py 가 bi_so_base_client 를 안 씁니다"
+assert "BiSOFollowerConfig(" not in arm_src, "arm_node.py 가 바퀴 없는 bi_so_follower 를 씁니다"
+assert "stop_base()" in arm_src, "에피소드가 끝나도 바퀴를 안 세웁니다"
+
+
+def sh_default(name):
+    m = re.search(rf'^{name}="\$\{{{name}:-([^}}]*)\}}"|^{name}="([^"$]*)"', record_sh, re.M)
+    assert m, f"record.sh 에서 {name} 을 못 찾음"
+    return m.group(1) or m.group(2)
+
+
+assert robot_yaml["arms"]["remote_ip"] == sh_default("PI_HOST"), \
+    "robot.yaml arms.remote_ip 와 record.sh PI_HOST 가 다릅니다"
+assert robot_yaml["arms"]["id"] == sh_default("ROBOT_ID"), \
+    "robot.yaml arms.id 와 record.sh ROBOT_ID 가 다릅니다"
+assert set(robot_yaml["host"]) == {"left_port", "right_port", "id"}, robot_yaml["host"]
+ok("추론(arm_node)이 녹화와 같은 bi_so_base_client·같은 파이로 붙고, 끝나면 바퀴 정지")
+
+
 print("\n전부 통과.")
