@@ -79,7 +79,8 @@ class LocalSource:
         frames = {}
         for name, cap in self.caps.items():
             ok, frame = cap.read() if cap.isOpened() else (False, None)
-            frames[name] = frame if ok else None  # BGR
+            # OpenCV 는 BGR 로 줍니다. 원격(lerobot)과 맞춰 RGB 로 돌려줍니다.
+            frames[name] = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if ok else None
         return frames
 
     def close(self) -> None:
@@ -110,6 +111,8 @@ class RemoteSource:
         self.robot.get_observation()  # 새 메시지가 있으면 last_frames 를 갱신
         # get_observation() 은 못 받은 카메라를 검은 화면으로 채우므로, 실제로 받은
         # 프레임(last_frames)을 직접 봅니다. 못 받았으면 None -> "NO FRAME".
+        # 이미 RGB 입니다: lerobot 카메라가 RGB 로 읽고, 호스트 imencode 와 클라이언트
+        # imdecode 가 채널 순서를 그대로 보존합니다 (데이터셋에 들어가는 그림과 같음).
         return {name: self.robot.last_frames.get(name) for name in self.names}
 
     def close(self) -> None:
@@ -128,7 +131,7 @@ def save(frames: dict, camera_set: str) -> list[Path]:
         if frame is None:
             continue
         p = SAVE_DIR / f"{stamp}_{camera_set}_{name}.jpg"
-        cv2.imwrite(str(p), frame)
+        cv2.imwrite(str(p), cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))  # imwrite 는 BGR
         paths.append(p)
     return paths
 
@@ -196,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
                     last_ids[name] = id(f)
                     counts[name] += 1
                     rr.log(f"observation.images.{name}",
-                           rr.Image(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)).compress())
+                           rr.Image(f).compress())  # 두 소스 모두 RGB
                 if time.time() - t0 >= 1.0:
                     dt = time.time() - t0
                     print("  ".join(f"{n} {c / dt:4.1f}fps" if c else f"{n} ✗NO FRAME"
