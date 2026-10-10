@@ -30,66 +30,77 @@ action chunk 방식(한 번에 50스텝 받아오기)이 여기서 필수입니�
 | **카메라** | 3cam / 4cam 둘 다 지원. `CAMERA_SET` 으로 전환. 4cam 은 **아직 미검증** |
 | **마감** | **2주** |
 
-## 로봇 클래스 — 바퀴를 녹화에 넣으려면
+## 로봇 클래스 — 우리가 직접 확장했습니다
 
-상류 [XLeRobot](https://github.com/Vector-Wangel/XLeRobot) 소스에서 확인한 사실입니다
-(`software/src/robots/xlerobot/`).
+⚠️ **상류 XLeRobot 의 `--robot.type=xlerobot` 을 쓰는 게 아닙니다.**
+`lerobot 0.6` 소스를 직접 고쳐서 `bi_so_follower` 에 호스트/클라이언트와
+베이스(바퀴)를 붙였습니다. 상류 문서(`port1`/`port2`, `x.vel`, lekiwi 게이트)를
+그대로 따라가면 **우리 코드와 안 맞습니다.**
 
-우리 하드웨어는 `--robot.type=xlerobot` 과 정확히 일치합니다:
-
-| 버스 | 모터 |
-|---|---|
-| `port1` | 왼팔 ID 1–6 + 머리 `head_motor_1`(7), `head_motor_2`(8) |
-| `port2` | **오른팔 ID 1–6 + 바퀴 `base_left_wheel`(7), `base_back_wheel`(8), `base_right_wheel`(9)** |
-
-`port2` 가 우리가 "바퀴 789 를 오른팔에 연결" 한 그 버스입니다.
-
-**액션 공간 17차원** (`xlerobot_client.py` 의 `_state_ft`):
+### 어디에 있나
 
 ```
-왼팔  6   left_arm_shoulder_pan.pos  ...  left_arm_gripper.pos
-오른팔 6  right_arm_shoulder_pan.pos ...  right_arm_gripper.pos
-머리  2   head_motor_1.pos  head_motor_2.pos
-베이스 3  x.vel  y.vel  theta.vel        ← 바퀴는 속도 제어. 개별 바퀴가 아닙니다
+/home/user/lerobot_0.6/          ← lerobot 소스 (editable 설치)
+    src/lerobot/
+/home/user/lerobot-venv-0.6/     ← 가상환경
 ```
 
-키보드 베이스 조작 기본 키: `i`/`k` 전후, `j`/`l` 좌우, `u`/`o` 회전,
-`n`/`m` 속도, `b` 종료 (`XLerobotConfig.teleop_keys`).
+### 무엇을 고쳤나 (15 files, +249 / -21)
 
-쓰려면 플러그인을 설치해야 `--robot.type=xlerobot` 이 CLI 에 뜹니다:
+새로 만든 파일:
+
+```
+src/lerobot/robots/bi_so_follower/bi_so_host.py        라즈베리파이 쪽 호스트
+src/lerobot/robots/bi_so_follower/bi_so_client.py      PC 쪽 클라이언트
+src/lerobot/robots/bi_so_follower/bi_so_base_host.py   베이스(바퀴) 호스트
+src/lerobot/teleoperators/bi_so_leader/bi_so_base_leader.py
+src/lerobot/robots/so102_follower/                     SO-102 팔
+src/lerobot/teleoperators/so102_leader/
+src/lerobot/teleoperators/bi_so102_leader/
+```
+
+고친 파일 중 큰 것:
+
+```
+robots/bi_so_follower/config_bi_so_follower.py   +123   ← 바퀴·설정이 여기
+teleoperators/bi_so_leader/config_bi_so_leader.py +34
+robots/bi_so_follower/__init__.py                 +25
+robots/utils.py                                   +24
+robots/__init__.py                                +20
+teleoperators/utils.py                            +12
+scripts/lerobot_record.py                          +4   ← 아주 작음(등록/임포트 수준)
+scripts/lerobot_teleoperate.py, lerobot_calibrate.py,
+lerobot_rollout.py, lerobot_replay.py,
+lerobot_setup_motors.py, lerobot_find_joint_limits.py   각 +2~4
+```
+
+### 🔴 이 수정분이 그 PC 한 대에만 있습니다
+
+레포에 없습니다. 팀원이 clone 해도 안 따라오고, `pip install -U` 한 번에
+날아갑니다. **지금 프로젝트에서 제일 큰 단일 리스크입니다.**
+
+패치로 묶어서 레포에 넣는 방법 (새 파일까지 포함):
 
 ```bash
-pip install -e software/plugins/xlerobot_model
-pip install -e software/plugins/lerobot_robot_xlerobot
+cd /home/user/lerobot_0.6
+git add -N .                               # 새 파일도 diff 에 포함
+git diff > /tmp/lerobot-0.6-xlerobot.patch
+git reset                                  # 스테이징만 되돌림
 ```
 
-### ⚠️ 지금 record.sh 는 바퀴를 못 찍습니다
+### 아직 모르는 것 (코드를 봐야 정해짐)
 
-`scripts/record.sh` 는 `--robot.type=bi_so_follower` 입니다 — **팔 12축만** 저장하고
-바퀴는 안 들어갑니다. 상류 XLeRobot 문서의 녹화 예시도 `bi_so101_follower`(팔만)
-라서, 그걸 따라가면 바퀴가 빠집니다.
+- `config_bi_so_follower.py` 에 **등록된 로봇 타입 이름**
+  (`@RobotConfig.register_subclass("...")`) — `record.sh` 의 `--robot.type` 값
+- 바퀴 모터 정의와 **액션 키 이름** — 녹화에 바퀴가 들어가는지가 여기서 갈립니다
+- 리더암 + 키보드를 녹화에서 어떻게 합치는지
+  (`lerobot_record.py` 가 4줄만 바뀐 걸 보면 이미 다른 데서 처리된 듯)
 
-바퀴를 넣으려면 `xlerobot` 으로 바꿔야 하고, 그러면 같이 바뀌는 것들:
+### 카메라는 어느 쪽이든 준비돼 있습니다
 
-| 항목 | `bi_so_follower` (현재) | `xlerobot` |
-|---|---|---|
-| 포트 플래그 | `--robot.left_arm_config.port` / `right_arm_config.port` | `--robot.port1` / `--robot.port2` |
-| 카메라 | 팔별로 나눠 넘기고 `left_`/`right_` 접두사 자동 | `--robot.cameras` 하나, 접두사 **자동 안 붙음** |
-| 관절 이름 | `left_shoulder_pan.pos` | `left_arm_shoulder_pan.pos` |
-| 그리퍼 이름 | `right_gripper.pos` | `right_arm_gripper.pos` |
-
-관절 이름이 바뀌므로 `config/robot.yaml` 의 `travel_pose` 와
-`grasp_check.joint` 도 같이 고쳐야 합니다.
-
-**카메라 쪽은 이미 양쪽을 지원합니다.** `camera_config.py` 가 로봇 타입에 맞는
-형태로 인자를 만들어 주고, **최종 관측 키는 두 경우에 똑같습니다**
-(`observation.images.top` / `.base` / `.left_wrist` / `.right_wrist`).
-그래서 로봇 클래스를 바꿔도 정책의 카메라 키는 안 바뀝니다.
-
-```bash
-python src/camera_config.py 4cam --record-args                        # per_arm
-python src/camera_config.py 4cam --record-args --robot-type=xlerobot  # flat
-```
+`bi_so_follower` 계열이면 현재 기본값인 `per_arm` 레이아웃이 맞습니다.
+다른 형태가 필요하면 `--robot-type=` 으로 전환됩니다. 최종 관측 키는
+두 레이아웃에서 똑같습니다.
 
 ## 아직 안 정해진 것 / 확인 필요
 
