@@ -1,16 +1,16 @@
 # XLeRobot — 모방학습 기반 자율주행 양팔 로봇
 
-말로 명령하면 로봇이 해당 장소로 자율주행해서, 양팔 SmolVLA 정책으로 태스크를 수행합니다.
+로봇이 1 m 앞 테이블까지 주행해서, **지시한 색의 주사위를 그쪽 팔로 집어 바구니에** 넣습니다.
+주행·집기·넣기를 정책(SmolVLA) 하나가 전부 냅니다. 자율주행은 안 씁니다.
 
 ```
-"빨간 거 가져와"
+"빨간 거 넣어줘"
    → 명령 해석 (Gemini, 태스크 하나로 분류)
-   → [팔 접기] → 1번 책상 이동 → "Pick up the red dice"
-   → [팔 접기: 그리퍼 유지] → 2번 책상 이동 → "Place the dice on the red spot"
+   → [팔 접기] → "Pick up the red dice and put it in the basket"
 ```
 
-태스크는 **단계의 나열**이라 이동이 중간에 끼는 것도 표현됩니다.
-색은 지시문으로 구분합니다 — SmolVLA 가 vision-**language**-action 모델이라서요.
+장면은 그대로 두고 지시문만 red ↔ blue 로 바꿔서, 정책이 **언어를 보고** 팔을 고르는지
+검증합니다 (ACT = 언어 없는 대조군). 실험·수집 절차는 [COLLECTING.md](COLLECTING.md).
 
 ## 기기 구성
 
@@ -77,7 +77,7 @@ python src/camera_config.py 3cam --check # 장치가 실제로 있는지
 녹화할 때만 바꾸려면 환경변수로:
 
 ```bash
-CAMERA_SET=4cam ./scripts/record.sh pick_red 40 --first
+CAMERA_SET=4cam ./scripts/record.sh red 12 --first
 ```
 
 ### ⚠️ 카메라 이름이 어긋나면 팔이 안 움직입니다

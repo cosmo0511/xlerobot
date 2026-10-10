@@ -8,6 +8,7 @@ tests_smoke.py — 하드웨어 없이 돌리는 스모크 테스트.
 """
 
 import pathlib
+import re
 import sys
 import tempfile
 
@@ -64,7 +65,7 @@ ok(f"기본 설정 로드 — 위치 {len(reg.locations)}개, 태스크 {len(reg
    f"학습 라벨 {len(reg.all_prompts())}종")
 
 
-# --- 2. 다단계 태스크 실행 순서 -------------------------------------------------
+# --- 2. 태스크 실행 순서 -------------------------------------------------------
 order = []
 seen_holding = []
 
@@ -93,37 +94,37 @@ def make_agent(nav_status="arrived", policy_status="done", fail_on_step=None):
     )
 
 
-r = make_agent().handle_command("빨간 거 가져와")
+RED = "Pick up the red dice and put it in the basket"
+BLUE = "Pick up the blue dice and put it in the basket"
+
+r = make_agent().handle_command("빨간 거 넣어줘")
 assert r["status"] == "done", r
-expected = [
-    "park:free", "nav:desk_1", "policy:Pick up the red dice",
-    "park:hold", "nav:desk_2", "policy:Place the dice on the red spot",
-    "park:free",
-]
+expected = ["park:free", "nav:table", f"policy:{RED}", "park:free"]
 assert order == expected, order
-ok("2단계 태스크 순서 — " + " → ".join(order))
+ok("1단계 태스크 순서 — " + " → ".join(order))
 
 
-# --- 3. 단계 사이 파킹은 그리퍼를 유지해야 한다 ----------------------------------
-# 이걸 안 지키면 1단계에서 집은 물건을 이동 직전에 떨어뜨립니다.
-between = order[3]
-assert between == "park:hold", f"단계 사이 파킹이 그리퍼를 열었습니다: {between}"
-ok("단계 사이 파킹이 그리퍼를 유지함 (물건 안 떨어뜨림)")
-
-assert order[0] == "park:free" and order[-1] == "park:free"
-ok("시작·종료 파킹은 그리퍼를 자유롭게 둠")
-
-
-# --- 4. 중간 단계 실패 시 다음 단계로 안 넘어간다 --------------------------------
-r = make_agent(fail_on_step=1).handle_command("빨간 거 가져와")
+# --- 3. 실패하면 거기서 멈춘다 --------------------------------------------------
+r = make_agent(fail_on_step=1).handle_command("빨간 거 넣어줘")
 assert r["status"] == "policy_failed", r
-assert r["failed_at_step"] == 1 and r["total_steps"] == 2, r
-assert "nav:desk_2" not in order, "1단계 실패인데 2단계로 이동함"
-ok(f"1단계 실패 시 중단 — {r['message'][:40]}…")
+assert order[-1] == f"policy:{RED}", "정책 실패 뒤에 뭔가 더 실행됨"
+ok(f"정책 실패 시 중단 — {r['message'][:40]}…")
 
-r = make_agent(nav_status="blocked").handle_command("파란 거 가져와")
+r = make_agent(nav_status="blocked").handle_command("파란 거 넣어줘")
 assert r["status"] == "nav_failed" and r["steps_done"] == [], r
 ok("이동 실패 시 조작 차단")
+
+
+# --- 4. 자율주행을 안 쓰면 이동 단계는 그냥 통과 ---------------------------------
+from navigation import make_navigator  # noqa: E402
+
+nav = make_navigator(reg, {"enabled": False})
+assert nav.navigate_to("table")["status"] == "arrived"
+assert nav.navigate_to("없는곳")["status"] == "failed"
+robot_cfg = __import__("yaml").safe_load(
+    (pathlib.Path(__file__).resolve().parent / "config" / "robot.yaml").read_text(encoding="utf-8"))
+assert robot_cfg["navigation"].get("enabled") is False, "robot.yaml 에서 자율주행이 켜져 있습니다"
+ok("자율주행 꺼짐 — 이동 단계 통과, Nav2 노드에 안 붙음")
 
 
 # --- 5. 모르는 명령엔 아무것도 안 한다 ------------------------------------------
@@ -133,28 +134,30 @@ assert order == [], "모르는 명령에 로봇이 움직임"
 ok("모르는 명령에 로봇 정지 유지")
 
 
-# --- 6. 학습 라벨 목록이 단계에서 정확히 나온다 ----------------------------------
+# --- 6. 실험 지시문은 red / blue 두 개, 색 단어만 다르다 --------------------------
+# 언어 효과를 분리하는 실험이라 두 지시문은 색 단어 하나만 달라야 합니다.
 prompts = reg.all_prompts()
-assert len(prompts) == len(set(prompts)), "학습 라벨이 중복됩니다"
-assert len(prompts) == 2 * len(reg.tasks), prompts
-ok(f"학습 라벨 {len(prompts)}종 추출 — 데이터셋도 {len(prompts)}종 찍어야 함")
+assert prompts == [RED, BLUE], prompts
+assert RED.replace("red", "blue") == BLUE, "두 지시문이 색 말고도 다릅니다"
+assert all(len(t.steps) == 1 for t in reg.tasks.values()), "실험 태스크는 1단계입니다"
+assert all(t.steps[0].max_seconds == 90 for t in reg.tasks.values()), "평가 제한은 90초"
+ok("지시문 2종, 색 단어만 다름, 1단계, 90초 제한")
 
 
-# --- 7. 집기 단계에만 잡았는지 확인이 켜진다 -------------------------------------
-# 이게 없으면 못 집고도 2번 책상까지 가서 빈 손으로 놓는 시늉을 합니다.
-make_agent().handle_command("빨간 거 가져와")
-assert seen_holding == [True, False], seen_holding
-ok("집기 단계만 expect_holding=True (놓기는 False)")
+# --- 7. 끝났을 때 주사위는 바구니에 — 쥐고 있는지 확인은 끈다 ---------------------
+make_agent().handle_command("빨간 거 넣어줘")
+assert seen_holding == [False], seen_holding
+ok("expect_holding=False (넣고 나면 그리퍼는 비어 있어야 함)")
 
 
 # --- 8. 색이 다르면 다른 지시문으로 간다 ----------------------------------------
 # 색 구분이 지시문으로만 이뤄지므로, 라우팅이 색을 틀리면 정책도 틀립니다.
-for cmd, want in [("빨간 거 가져와", "red"), ("파란 거 가져와", "blue"),
-                  ("노란 거 가져와", "yellow")]:
+for cmd, want in [("빨간 거 넣어줘", RED), ("파란 거 넣어줘", BLUE),
+                  ("red", RED), ("blue", BLUE)]:
     make_agent().handle_command(cmd)
-    picks = [o for o in order if o.startswith("policy:Pick")]
-    assert picks and want in picks[0], f"{cmd} -> {picks}"
-ok("색깔별 라우팅 — 빨강/파랑/노랑이 각각 다른 지시문으로")
+    assert f"policy:{want}" in order, f"{cmd} -> {order}"
+ok("색깔별 라우팅 — 빨강/파랑이 각각 다른 지시문으로")
+
 
 # --- 9. 카메라 구성 ------------------------------------------------------------
 # 카메라 이름이 녹화 때와 추론 때 다르면 정책이 행동을 하나도 못 냅니다.
@@ -301,6 +304,12 @@ assert layout_for_robot("bi_so_base_client") == "flat"
 assert layout_for_robot("bi_so_base_follower") == "per_arm"
 ok("record.sh 가 bi_so_base_client + bi_so_base_leader 로 녹화 (액션에 바퀴 포함)")
 
+# record.sh 의 라벨이 tasks.yaml 과 글자까지 같아야 추론 때 정책이 알아듣습니다.
+sh_labels = re.findall(r'^\s*\w+\)\s+echo "([^"]+)" ;;', record_sh, re.M)
+assert sorted(sh_labels) == sorted(reg.all_prompts()), (sh_labels, reg.all_prompts())
+assert re.search(r"^EPISODE_TIME_S=60\b", record_sh, re.M), "데모 제한 60초와 녹화 길이가 다릅니다"
+ok("record.sh 라벨 = tasks.yaml 지시문, 에피소드 60초")
+
 # 파이(host.sh)와 PC(record.sh)의 카메라 이름이 같아야 프레임이 들어옵니다.
 host_sh = (pathlib.Path(__file__).resolve().parent / "scripts" / "host.sh").read_text(
     encoding="utf-8")
@@ -318,8 +327,6 @@ ok("host.sh(파이)와 record.sh(PC)가 같은 yaml 의 같은 카메라 이름�
 # --- 13. 추론은 녹화와 같은 로봇으로 ---------------------------------------------
 # 정책은 녹화 때 본 키·순서(15차원)로만 행동을 냅니다. 추론 쪽 로봇 클래스나
 # 접속 정보가 녹화와 다르면 팔이 엉뚱하게 움직이거나 바퀴가 안 움직입니다.
-import re  # noqa: E402
-
 arm_src = (pathlib.Path(__file__).resolve().parent / "src" / "arm_node.py").read_text(
     encoding="utf-8")
 assert "BiSOBaseClientConfig" in arm_src, "arm_node.py 가 bi_so_base_client 를 안 씁니다"

@@ -42,7 +42,8 @@ def build(args):
     registry = load_registry()
 
     missing = registry.placeholder_locations()
-    if missing and not args.dry_run:
+    nav_enabled = robot_yaml["navigation"].get("enabled", True)
+    if missing and nav_enabled and not args.dry_run:
         logging.warning("좌표가 아직 (0,0,0)인 위치: %s — tasks.yaml 을 채워주세요", missing)
 
     navigator = make_navigator(registry, robot_yaml["navigation"], dry_run=args.dry_run)

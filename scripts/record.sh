@@ -6,13 +6,16 @@
 # 먼저 라즈베리파이에서 호스트를 띄워 두세요:   ./scripts/host.sh
 # (로봇·카메라는 파이에 USB 로 붙어 있고, PC 는 무선으로 붙습니다.)
 #
-#   ./scripts/record.sh pick_red  40 --first    # 맨 처음 세션 (데이터셋 새로 만듦)
-#   ./scripts/record.sh pick_blue 40            # 이어붙이기
-#   ./scripts/record.sh place_red 40
+#   ./scripts/record.sh red  12 --first    # 1묶음: 새 장면 12개를 red 로 (데이터셋 새로 만듦)
+#   ./scripts/record.sh blue 12            # 2묶음: **같은 장면 12개**를 blue 로 (이어붙이기)
+#   ./scripts/record.sh red  12            # 3묶음: 새 장면 12개 ... 8묶음까지 = 96개
+#
+# 태스크: 1m 떨어진 시작 위치에서 주행 → 지시한 색 주사위를 그쪽 팔로 집어
+#        바구니에 넣기 (config/tasks.yaml, COLLECTING.md)
 #
 # 카메라 구성을 바꿔서 찍으려면 (기본값 3cam):
 #
-#   CAMERA_SET=4cam ./scripts/record.sh pick_red 40 --first
+#   CAMERA_SET=4cam ./scripts/record.sh red 12 --first
 #
 #   구성 목록:  python src/camera_config.py
 #   구성 파일:  config/cameras.<이름>.yaml
@@ -21,12 +24,11 @@
 #     카메라 구성이 다른 데이터를 한 데이터셋에 섞으면 관측 키가 안 맞아
 #     데이터셋이 깨집니다. 그래서 이름에 구성을 넣어 자동으로 분리합니다.
 #
-# 라벨 키:  pick_red  pick_blue  pick_yellow
-#           place_red place_blue place_yellow
+# 라벨 키:  red  blue
 #
 # 녹화 중 키 조작:
 #   →     지금 에피소드 끝내고 다음으로
-#   ←     방금 걸 다시 찍기   ← 색을 잘못 집었으면 무조건 이거
+#   ←     방금 걸 다시 찍기   ← 60초 초과·다른 주사위 접촉·반대쪽 팔 사용이면 무조건 이거
 #   ESC   녹화 전체 중지
 #
 # 바퀴 (키보드, 리더암과 같이 씀):
@@ -76,8 +78,10 @@ LEADER_ID="bi_so101_leader"
 # 바퀴 키. 실제로 쓰던 배치 그대로입니다 (기본값의 q/e 회전 대신 z/x).
 TELEOP_KEYS='{"forward":"w","backward":"s","left":"a","right":"d","rotate_left":"z","rotate_right":"x","speed_up":"c","speed_down":"v","quit":"t"}'
 
-EPISODE_TIME_S=25      # 에피소드 하나 최대 길이(초)
-RESET_TIME_S=15        # 다음 에피소드 전 준비 시간(초)
+# 데모 규칙: 60초 초과는 재녹화. 60초에 자동으로 끝났으면 = 초과 → ← 로 다시.
+EPISODE_TIME_S=60      # 에피소드 하나 최대 길이(초)
+# 로봇을 시작 위치(테이프)로 되돌리고 주사위 자리를 바꾸는 시간. → 로 일찍 끝낼 수 있음.
+RESET_TIME_S=40
 # -----------------------------------------------------------------------------
 
 CAM_TOOL="$PROJECT_ROOT/src/camera_config.py"
@@ -102,39 +106,27 @@ mapfile -t CAM_ARGS < <(python3 "$CAM_TOOL" "$CAMERA_SET" --record-args --robot-
 #   `python src/task_registry.py` 출력과 대조해서 쓰세요.
 label_for() {
   case "$1" in
-    pick_red)     echo "Pick up the red dice" ;;
-    pick_blue)    echo "Pick up the blue dice" ;;
-    pick_yellow)  echo "Pick up the yellow dice" ;;
-    place_red)    echo "Place the dice on the red spot" ;;
-    place_blue)   echo "Place the dice on the blue spot" ;;
-    place_yellow) echo "Place the dice on the yellow spot" ;;
+    red)  echo "Pick up the red dice and put it in the basket" ;;
+    blue) echo "Pick up the blue dice and put it in the basket" ;;
     *) return 1 ;;
-  esac
-}
-
-# 어느 책상에서 찍는 세션인지 (안내 메시지용)
-desk_for() {
-  case "$1" in
-    pick_*)  echo "1번 책상 — 주사위 3개를 다 놓고, 매 에피소드 자리를 섞으세요" ;;
-    place_*) echo "2번 책상 — 색깔 자리 3개를 다 보이게, 주사위는 그리퍼에 쥐여준 채 시작" ;;
   esac
 }
 
 # ------------------------------ 인자 처리 -------------------------------------
 KEY="${1:-}"
-EPISODES="${2:-40}"
+EPISODES="${2:-12}"     # 한 묶음 = 12조합 한 바퀴
 FIRST="${3:-}"
 
 if [ -z "$KEY" ] || ! TASK="$(label_for "$KEY")"; then
   echo "사용법: $0 <라벨키> [에피소드수] [--first]"
   echo
   echo "라벨키:"
-  for k in pick_red pick_blue pick_yellow place_red place_blue place_yellow; do
+  for k in red blue; do
     printf "  %-13s %s\n" "$k" "$(label_for "$k")"
   done
   echo
-  echo "예: $0 pick_red 40 --first"
-  echo "    CAMERA_SET=4cam $0 pick_red 40 --first"
+  echo "예: $0 red 12 --first"
+  echo "    CAMERA_SET=4cam $0 red 12 --first"
   exit 1
 fi
 
@@ -151,7 +143,6 @@ cat <<EOF
   라벨      : "$TASK"
   데이터셋  : $REPO_ID
   에피소드  : $EPISODES 개   (이어붙이기: $RESUME)
-  자리      : $(desk_for "$KEY")
 
   파이      : $PI_HOST   (host.sh 를 같은 CAMERA_SET 으로 띄웠나요?)
   카메라 구성: $CAMERA_SET   (fps $CAM_FPS)
@@ -161,9 +152,10 @@ $CAM_SUMMARY
   → 다음으로   ← 다시 찍기   ESC 중지
   g 바퀴 잠금 해제/잠금   w/s/a/d 이동   z/x 회전   c/v 속도
 
-  · 파킹 자세에서 시작해서 파킹 자세로 끝내세요
-  · 지시문과 다른 색을 집었으면 반드시 ← 로 다시
-  · 40개 중 10개쯤은 로봇을 5~10cm 틀어서 찍으세요 (Nav2 오차 대비)
+  · 시작: 테이프 위치(좌/중앙/우)에 바퀴를 맞추고, 팔은 파킹 자세
+  · 빨강·파랑 둘 다 좌/우에 하나씩. 12개 = 색 2 × 좌우 2 × 시작 위치 3 한 바퀴
+  · **지시한 색 쪽 팔만** 사용. 다른 주사위를 건드렸으면 ← 로 다시
+  · 홀수 묶음(red)에서 만든 장면을 다음 묶음(blue)에서 **그대로** 다시 씁니다 — 기록해 두세요
   · 위 관측 키가 **이전 세션과 같은지** 확인하세요. 다르면 섞이면 안 됩니다.
 
 EOF

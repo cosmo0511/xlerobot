@@ -87,8 +87,10 @@ arms:
 #   PC 에서:  python src/arm_node.py     (같은 PC 라서 gRPC 는 무선을 안 탑니다)
 policy:
   server_address: "127.0.0.1:8080"       # 같은 PC
-  type: "smolvla"
-  path: "outputs/train/smolvla_home/checkpoints/last/pretrained_model"
+  # 평가는 SmolVLA 와 ACT(언어 없는 대조군)를 번갈아 돌립니다 (COLLECTING.md 7절).
+  # 정책을 바꿀 때 type 과 path 를 같이 바꾸세요. ACT 는 지시문을 무시합니다.
+  type: "smolvla"               # smolvla | act
+  path: "outputs/train/smolvla_dice/checkpoints/last/pretrained_model"
   device: "cuda"                # 서버(PC) 쪽 장치
   fps: 30                       # 데모 수집 fps 와 동일해야 함
   actions_per_chunk: 50         # 한 번에 받아오는 행동 개수

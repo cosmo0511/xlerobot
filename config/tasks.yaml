@@ -1,96 +1,50 @@
 # =============================================================================
 # tasks.yaml — 태스크·위치 정의의 단일 진실 소스(single source of truth)
 # =============================================================================
-# 여기만 고치면 agent / navigation / policy 세 곳이 전부 따라옵니다.
+# 여기만 고치면 agent / record.sh 라벨 / 추론이 전부 따라옵니다.
 #
-# ■ 태스크는 "단계(steps)"의 나열입니다
+# ■ 실험 태스크 (실험설계 마일스톤 PPT, 2026-10)
 # ---------------------------------------------------------------------------
-#   [팔 접기] → 1단계 위치로 이동 → 1단계 조작
-#            → [팔 접기: 그리퍼 유지] → 2단계 위치로 이동 → 2단계 조작
+# 테이블에서 1m 떨어진 시작 위치(좌/중앙/우, 바닥 테이핑)에서 출발해 앞으로 주행,
+# **지시한 색의 주사위를 그쪽 팔로 집어 바구니에 넣습니다.** 한 에피소드에 전부.
 #
-# 단계 사이의 "팔 접기"는 그리퍼를 열지 않습니다. 물건을 든 채로 이동해야 하니까요.
+#   · 빨강·파랑 주사위를 항상 둘 다, 좌/우 영역에 하나씩 (영역 안 5지점, 매번 바뀜)
+#   · 같은 장면 × 지시문 2개(red ↔ blue) = 쌍. 장면은 그대로, 지시만 바꿈
+#   · 그래서 **언어를 봐야만** 정답 팔이 정해집니다 (ACT 는 언어 없는 대조군)
+#   · 12조합 = 색 2 × 좌우 2 × 시작 위치 3
 #
-# ■ 색을 지시문으로 구분합니다
-# ---------------------------------------------------------------------------
-# SmolVLA 는 vision-language-action 모델이라, "어느 색"을 지정하는 통로가 지시문입니다.
-# 그래서 색마다 별도의 학습 라벨입니다. 색 3개 × 단계 2개 = **학습 라벨 6종**.
+# 두 지시문은 색 단어 하나만 다릅니다. 다른 단어까지 다르면 정책이 색 말고 그
+# 차이를 단서로 쓸 수 있어서, 언어 효과를 깨끗하게 분리할 수 없습니다.
 #
-#   pick :  Pick up the red / blue / yellow dice
-#   place:  Place the dice on the red / blue / yellow spot
+# ⚠️ 이 문자열은 데이터셋에 그대로 들어갑니다. 녹화를 시작한 뒤에는 바꾸지 마세요.
+#    scripts/record.sh 의 라벨과 글자까지 같아야 합니다 (tests_smoke.py 가 확인).
 #
-# ⚠️ 데모를 찍을 때 반드시:
-#   - 매 에피소드에 **세 색을 다 놓고** 찍으세요. 빨간 것만 놓고 "빨간 거 집어"를 찍으면
-#     정책이 지시문을 무시하고 "거기 있는 거 아무거나 집기"를 배웁니다.
-#   - 색과 **위치를 섞으세요.** 빨강이 항상 왼쪽이면 "빨간 거"가 아니라 "왼쪽 거"를
-#     배웁니다. 에피소드마다 색의 자리를 바꿔야 색이 유일한 단서가 됩니다.
-#   자세한 건 COLLECTING.md 참고.
-#
-# ■ expect_holding
-# ---------------------------------------------------------------------------
-# 단계가 끝났을 때 그리퍼에 물건이 있어야 하면 true 로 두세요.
-# 그리퍼가 끝까지 닫혔으면(= 아무것도 못 잡음) 실패로 처리하고 다음 단계로 안 갑니다.
-# 이게 없으면 못 집고도 2번 책상까지 가서 빈 손으로 놓는 시늉을 합니다.
-# 판정 기준은 robot.yaml 의 arms.grasp_check 에서 정합니다.
+# 녹화 규칙·수량·평가 방법은 COLLECTING.md.
 
 # --- 위치 정의 -----------------------------------------------------------------
-# pose 는 Nav2 map 프레임. x, y 는 미터, yaw 는 도(degree).
-# ※ 맵을 만들기 전에는 전부 0.0 으로 두세요. 실행 시 경고가 뜹니다.
+# 자율주행을 안 쓰므로(robot.yaml navigation.enabled: false) pose 는 읽히지 않습니다.
+# 테이블까지의 이동은 정책이 바퀴로 직접 합니다.
 locations:
-  - id: desk_1
-    name: 1번 책상          # 주사위 3개가 놓여 있는 책상
-    pose: {x: 0.0, y: 0.0, yaw: 0.0}
-
-  - id: desk_2
-    name: 2번 책상          # 색깔별 자리가 표시된 책상
+  - id: table
+    name: 테이블              # 주사위 2개 + 바구니
     pose: {x: 0.0, y: 0.0, yaw: 0.0}
 
 # --- 태스크 정의 ---------------------------------------------------------------
-# 색마다 태스크 하나. 각 태스크는 [집기 → 놓기] 2단계입니다.
-# 놓는 위치는 셋 다 desk_2 이고, **어느 자리에 놓는지는 지시문이 결정**합니다.
+# 색마다 태스크 하나, 각각 1단계. max_seconds 90 = 평가 제한 시간.
+# expect_holding 은 false: 끝났을 때 주사위는 그리퍼가 아니라 바구니에 있어야 합니다.
 tasks:
-  - id: red_transfer
-    name: 빨간 주사위 옮기기
-    aliases: ["빨간 거 가져와", "빨간 주사위 옮겨줘", "빨강 옮겨", "red"]
+  - id: red_to_basket
+    name: 빨간 주사위 바구니에 넣기
+    aliases: ["빨간 거 넣어줘", "빨간 주사위 바구니에", "빨강", "빨간", "red"]
     steps:
-      - location: desk_1
-        prompt: "Pick up the red dice"
-        max_seconds: 60
-        expect_holding: true      # 끝났을 때 주사위를 쥐고 있어야 함
-      - location: desk_2
-        prompt: "Place the dice on the red spot"
-        max_seconds: 60
+      - location: table
+        prompt: "Pick up the red dice and put it in the basket"
+        max_seconds: 90
 
-  - id: blue_transfer
-    name: 파란 주사위 옮기기
-    aliases: ["파란 거 가져와", "파란 주사위 옮겨줘", "파랑 옮겨", "blue"]
+  - id: blue_to_basket
+    name: 파란 주사위 바구니에 넣기
+    aliases: ["파란 거 넣어줘", "파란 주사위 바구니에", "파랑", "파란", "blue"]
     steps:
-      - location: desk_1
-        prompt: "Pick up the blue dice"
-        max_seconds: 60
-        expect_holding: true      # 끝났을 때 주사위를 쥐고 있어야 함
-      - location: desk_2
-        prompt: "Place the dice on the blue spot"
-        max_seconds: 60
-
-  - id: yellow_transfer
-    name: 노란 주사위 옮기기
-    aliases: ["노란 거 가져와", "노란 주사위 옮겨줘", "노랑 옮겨", "yellow"]
-    steps:
-      - location: desk_1
-        prompt: "Pick up the yellow dice"
-        max_seconds: 60
-        expect_holding: true      # 끝났을 때 주사위를 쥐고 있어야 함
-      - location: desk_2
-        prompt: "Place the dice on the yellow spot"
-        max_seconds: 60
-
-  # ↓ 위 3개가 실제로 성공한 뒤에 나머지 태스크를 추가하세요.
-  #   locations 에 bathroom / bedroom / kitchen 도 함께 넣어야 합니다.
-  #
-  # - id: towel_fold
-  #   name: 수건 접기
-  #   aliases: ["수건 접어줘"]
-  #   steps:
-  #     - location: bathroom
-  #       prompt: "Fold the towel and put it away"
-  #       max_seconds: 240
+      - location: table
+        prompt: "Pick up the blue dice and put it in the basket"
+        max_seconds: 90
