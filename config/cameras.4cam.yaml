@@ -49,16 +49,43 @@
 #
 # 확인:  python src/camera_config.py 4cam --check   (경로가 있는지만 봅니다)
 
+# =============================================================================
+# ■ 꽂은 자리 (2026-10-10 파이에서 확인) — **이 표가 제일 중요합니다**
+# =============================================================================
+# by-path 는 "어느 USB 포트에 꽂았는가" 기준입니다. by-id 를 못 쓰는 이유는
+# 카메라 4대 중 3대가 같은 모델·같은 시리얼(Generic_USB_Camera_200901010001)
+# 이라 udev 가 by-id 링크를 하나만 만들고, 그게 재부팅 때 셋 중 누구를 가리킬지
+# 보장이 없기 때문입니다.
+#
+#   USB 포트   그때의 노드   카메라        비고
+#   1          /dev/video6   top          YHTek — 유일하게 다른 모델
+#   1.4.3      /dev/video0   base
+#   1.2        /dev/video4   left_wrist
+#   1.3        /dev/video2   right_wrist
+#
+# ⚠ **케이블을 다른 포트로 옮겨 꽂으면 경로가 바뀝니다.** 96개를 다 찍을 때까지
+#   같은 자리에 있어야 합니다. 꽂은 자리를 테이프로 표시해 두세요. 중간에
+#   바뀌면 top 칸에 손목캠이 들어간 채로 녹화돼도 아무도 모릅니다.
+#
+# ⚠ /dev/videoN 번호는 재부팅하면 바뀔 수 있습니다. 위 "그때의 노드" 는 참고용일
+#   뿐이고, 실제로 쓰는 건 아래 by-path 경로입니다.
+#
+# 다시 확인:  ./scripts/run_4cam.sh scan      (파이에서)
+#            ./scripts/run_4cam.sh selftest  (4대 동시 + fps + 대역폭)
+
 # --- 팔에 안 묶인 카메라 (접두사 없음) ----------------------------------------
 top_cameras:
-  top:   {index_or_path: "/dev/video0", width: 640, height: 480, fps: 30}
-  # ↓ 실제 인덱스는 lerobot-find-cameras 로 확인해서 고치세요.
-  base:  {index_or_path: "/dev/video6", width: 640, height: 480, fps: 30}
+  # USB 포트 1 (YHTek)
+  top:   {index_or_path: "/dev/v4l/by-path/platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1:1.0-video-index0", width: 640, height: 480, fps: 30}
+  # USB 포트 1.4.3
+  base:  {index_or_path: "/dev/v4l/by-path/platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.4.3:1.0-video-index0", width: 640, height: 480, fps: 30}
 
 # --- 왼팔 (left_ 접두사) -------------------------------------------------------
 left_cameras:
-  wrist: {index_or_path: "/dev/video2", width: 640, height: 480, fps: 30}
+  # USB 포트 1.2
+  wrist: {index_or_path: "/dev/v4l/by-path/platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.2:1.0-video-index0", width: 640, height: 480, fps: 30}
 
 # --- 오른팔 (right_ 접두사) ----------------------------------------------------
 right_cameras:
-  wrist: {index_or_path: "/dev/video4", width: 640, height: 480, fps: 30}
+  # USB 포트 1.3
+  wrist: {index_or_path: "/dev/v4l/by-path/platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.3:1.0-video-index0", width: 640, height: 480, fps: 30}
