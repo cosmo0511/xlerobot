@@ -4,16 +4,17 @@ main.py — 💻 GPU PC 에서 실행하는 에이전트 진입점.
     # 하드웨어 없이 전체 흐름만 확인 (제일 먼저 이걸로 테스트하세요)
     python src/main.py --dry-run
 
-    # 실제 로봇 — Pi-A 의 arm_node.py 와 Pi-B 의 Nav2 가 떠 있어야 합니다
+    # 실제 로봇 — 파이의 host.sh, PC 의 정책 서버와 arm_node.py 가 떠 있어야 합니다
     python src/main.py
 
     # 명령 하나만 실행하고 종료 (시연 스크립트용)
     python src/main.py --once "빨간 거 가져와"
 
-기기 3대 중 이 파일은 PC 담당입니다.
-    🦾 Pi-A   arm_node.py        (팔 + 카메라)
-    🛞 Pi-B   nav2_bringup       (바퀴 + 라이다)
-    💻 PC     lerobot-policy-server  +  main.py  ← 여기
+    🍓 파이   scripts/host.sh                        (팔 + 바퀴 + 카메라)
+    💻 PC     lerobot-policy-server + arm_node.py + main.py  ← 여기
+
+자율주행(Nav2)은 안 씁니다 (robot.yaml navigation.enabled: false).
+태스크의 "이동" 단계는 건너뛰고, 바퀴는 정책이 직접 움직입니다.
 """
 
 from __future__ import annotations
@@ -73,7 +74,7 @@ def build(args):
 def main():
     ap = argparse.ArgumentParser(description="XLeRobot 명령 에이전트 (PC)")
     ap.add_argument("--dry-run", action="store_true",
-                    help="Pi-A / Pi-B 없이 흐름만 확인")
+                    help="로봇 없이 흐름만 확인")
     ap.add_argument("--once", metavar="COMMAND", help="명령 하나만 실행하고 종료")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()

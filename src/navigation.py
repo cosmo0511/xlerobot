@@ -49,6 +49,23 @@ class DryRunNavigator:
         pass
 
 
+class NoNavigator:
+    """자율주행을 안 쓸 때. 이동 단계를 건너뜁니다 (바퀴는 정책이 직접 냄)."""
+
+    def __init__(self, registry: TaskRegistry):
+        self.registry = registry
+
+    def navigate_to(self, location_id: str) -> dict[str, Any]:
+        if location_id not in self.registry.locations:
+            return {"status": "failed", "location_id": location_id,
+                    "message": f"알 수 없는 위치: {location_id}"}
+        return {"status": "arrived", "location_id": location_id,
+                "message": "자율주행 안 씀 — 이동 단계 건너뜀"}
+
+    def shutdown(self) -> None:
+        pass
+
+
 class NavNodeClient:
     """Pi-B 의 nav_node.py 에 ZMQ REQ 로 목표를 보냅니다."""
 
@@ -107,6 +124,8 @@ class NavNodeClient:
 
 
 def make_navigator(registry: TaskRegistry, nav_cfg: dict, dry_run: bool = False):
+    if not nav_cfg.get("enabled", True):
+        return NoNavigator(registry)
     if dry_run:
         return DryRunNavigator(registry)
     return NavNodeClient(nav_cfg)

@@ -30,8 +30,9 @@ PC 와 파이는 무선으로 붙습니다. 패치된 lerobot 0.6 이 둘 다 �
 |---|---|---|
 | `scripts/record.sh`, `config/cameras.*.yaml` | ✅ **지금 쓰는 것** | 데모 데이터 수집 |
 | `src/camera_config.py` | ✅ 지금 쓰는 것 | 녹화·추론이 공유하는 카메라 설정 |
+| `src/view_cameras.py` | ✅ 지금 쓰는 것 | 카메라 화면 확인 (따로 실행) |
 | `src/arm_node.py`, `src/policy_client.py` | ⏳ 학습 끝나면 | SmolVLA 추론 |
-| `src/nav_node.py`, `src/navigation.py` | ⏸ Nav2 세팅 후 | 자율주행 ([NAV2_SETUP.md](NAV2_SETUP.md)) |
+| `src/nav_node.py`, `src/navigation.py` | ❌ 안 씀 | 자율주행 안 쓰기로 함 (`navigation.enabled: false`) |
 | `src/agent.py`, `src/task_registry.py` | ⏸ 다단계 태스크 단계 | 말로 명령 → 태스크 라우팅 (LLM) |
 
 ⏸ 는 **아직** 안 쓰는 것이지 버린 코드가 아닙니다. `python src/main.py --dry-run`
