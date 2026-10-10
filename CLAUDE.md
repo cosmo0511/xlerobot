@@ -142,6 +142,11 @@ arm_action = {f"arm_{k}": v for k, v in arm_action.items()}
 해결했다는 뜻입니다. 그래서 새로 쓰지 말고 **그 파일을 가져와서 레포에 넣어야**
 합니다.
 
+### 환경: lerobot 0.6 (venv)
+
+돌아가는 설정은 **lerobot 0.6** 가상환경 안에 있습니다. 임포트 경로와 CLI 플래그가
+버전마다 바뀌므로, 코드를 맞출 때는 이 버전 기준으로 맞춰야 합니다.
+
 ### 참고: 상류는 포크된 lerobot 을 전제합니다
 
 `software/src/record.py` 가 `from lerobot.robots import xlerobot` 로 임포트합니다.
