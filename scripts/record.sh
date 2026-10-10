@@ -6,16 +6,18 @@
 # 먼저 라즈베리파이에서 호스트를 띄워 두세요:   ./scripts/host.sh
 # (로봇·카메라는 파이에 USB 로 붙어 있고, PC 는 무선으로 붙습니다.)
 #
-#   ./scripts/record.sh red  12 --first    # 1묶음: 새 장면 12개를 red 로 (데이터셋 새로 만듦)
-#   ./scripts/record.sh blue 12            # 2묶음: **같은 장면 12개**를 blue 로 (이어붙이기)
-#   ./scripts/record.sh red  12            # 3묶음: 새 장면 12개 ... 8묶음까지 = 96개
+#   ./scripts/record.sh red  8 --first     # 맨 처음 (데이터셋 새로 만듦)
+#   ./scripts/record.sh red  8             # 이후는 이어붙이기
+#   ./scripts/record.sh blue 8
+#
+#   녹화 순서(8개씩 12블록)는 COLLECTING.md 3절 표를 따르세요.
 #
 # 태스크: 1m 떨어진 시작 위치에서 주행 → 지시한 색 주사위를 그쪽 팔로 집어
 #        바구니에 넣기 (config/tasks.yaml, COLLECTING.md)
 #
 # 카메라 구성을 바꿔서 찍으려면 (기본값 3cam):
 #
-#   CAMERA_SET=4cam ./scripts/record.sh red 12 --first
+#   CAMERA_SET=4cam ./scripts/record.sh red 8 --first
 #
 #   구성 목록:  python src/camera_config.py
 #   구성 파일:  config/cameras.<이름>.yaml
@@ -114,7 +116,7 @@ label_for() {
 
 # ------------------------------ 인자 처리 -------------------------------------
 KEY="${1:-}"
-EPISODES="${2:-12}"     # 한 묶음 = 12조합 한 바퀴
+EPISODES="${2:-8}"      # 한 블록 = 8개 (COLLECTING.md 3절)
 FIRST="${3:-}"
 
 if [ -z "$KEY" ] || ! TASK="$(label_for "$KEY")"; then
@@ -125,8 +127,8 @@ if [ -z "$KEY" ] || ! TASK="$(label_for "$KEY")"; then
     printf "  %-13s %s\n" "$k" "$(label_for "$k")"
   done
   echo
-  echo "예: $0 red 12 --first"
-  echo "    CAMERA_SET=4cam $0 red 12 --first"
+  echo "예: $0 red 8 --first"
+  echo "    CAMERA_SET=4cam $0 red 8 --first"
   exit 1
 fi
 
