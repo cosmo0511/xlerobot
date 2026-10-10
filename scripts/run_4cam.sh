@@ -171,6 +171,7 @@ case "$cmd" in
       echo
       echo "이어 찍기 :  ./scripts/run_4cam.sh record red 8"
       echo "눈으로 확인:  lerobot-dataset-viz --repo-id=$REPO_ID --root=$DATASET_ROOT"
+      echo "손실 검사 :  python src/check_dataset.py $REPO_ID"
     fi
     ;;
 
