@@ -12,15 +12,28 @@
 
 # --- 🍓 파이 : 로봇 호스트 (scripts/host.sh 가 읽음) --------------------------
 # 녹화와 추론이 둘 다 이 호스트를 통하므로 **캘리브레이션이 한 벌**입니다.
-# 아직 파이에서 확인 안 한 값이라 비워 뒀습니다. 파이에서 확인해서 채우세요.
-#   포트:  ls -l /dev/serial/by-id/   또는 lerobot-find-port
-#   id  :  ~/.cache/huggingface/lerobot/calibration/robots/bi_so_base_follower/
-#          에 있는 <id>_left.json / <id>_right.json 의 <id>
+# 포트는 2026-10-10 파이에서 확인했습니다. **by-id 를 씁니다** — /dev/ttyACM0,1 은
+# 재부팅하면 서로 뒤바뀝니다 (실제로 ACM0 이 왼팔, ACM1 이 오른팔이었는데 보장 없음).
+# 두 팔은 시리얼이 서로 달라서 by-id 가 안전합니다 (카메라와 달리 안 겹칩니다).
+#
+# 어느 쪽이 오른팔인지는 **바퀴 모터로** 확정했습니다. 바퀴 ID 7/8/9 가 오른팔
+# 버스에 얹혀 있으므로, 버스를 스캔해서 7/8/9 가 응답하면 그게 오른팔입니다:
+#
+#   python -c "
+#   from lerobot.motors.feetech import FeetechMotorsBus
+#   print(FeetechMotorsBus.scan_port('/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE6084303-if00'))"
+#
+#   5AE6084303 -> [1..9]  = 오른팔 (바퀴 7/8/9)
+#   5AE6085476 -> [1..6]  = 왼팔
+#
+# id 는 캘리브레이션 파일 이름입니다 (<id>_left.json / <id>_right.json):
+#   ls ~/.cache/huggingface/lerobot/calibration/robots/bi_so_base_follower/
+#
 # 환경변수 FOLLOWER_LEFT_PORT / FOLLOWER_RIGHT_PORT / FOLLOWER_ID 가 있으면 그게 우선.
 host:
-  left_port:  null              # 왼팔 follower
-  right_port: null              # 오른팔 follower (바퀴 ID 7/8/9 도 이 버스)
-  id:         null              # 캘리브레이션 파일 이름
+  left_port:  "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE6085476-if00"
+  right_port: "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE6084303-if00"
+  id:         null              # ← 캘리브레이션 파일 이름. 파이에서 확인해서 채우세요
 
 # --- 💻 PC : 추론 노드 (src/arm_node.py) -------------------------------------
 # 녹화(record.sh)와 같은 bi_so_base_client 로 파이 호스트에 붙습니다.
