@@ -107,7 +107,11 @@ case "$cmd" in
     # shellcheck source=scripts/teleop_keys.sh
     source "$SCRIPT_DIR/teleop_keys.sh"
     PI_HOST="${PI_HOST:-xlerobot2.local}"
-    echo "파이($PI_HOST)의 host.sh 가 떠 있어야 합니다."
+    # 카메라도 녹화와 같은 yaml 에서 넘깁니다. 빠지면 클라이언트가 카메라 없는
+    # 로봇으로 떠서 화면(--display_data)에 관절 값만 나옵니다.
+    mapfile -t CAM_ARGS < <(python3 "$PROJECT_ROOT/src/camera_config.py" "$CAMERA_SET" \
+      --record-args --robot-type=bi_so_base_client)
+    echo "파이($PI_HOST)의 host.sh 가 떠 있어야 합니다. 카메라는 rerun 창에 뜹니다."
     echo
     echo "  g        바퀴 잠금 해제/잠금 — **시작은 잠김**입니다. 한 번 눌러야 움직입니다"
     echo "  w/s/a/d  앞/뒤/좌/우      z/x 회전      c/v 속도      t 종료"
@@ -116,11 +120,13 @@ case "$cmd" in
       --robot.type=bi_so_base_client \
       --robot.remote_ip="$PI_HOST" \
       --robot.id=bi_so101 \
+      "${CAM_ARGS[@]}" \
       --teleop.type=bi_so_base_leader \
       --teleop.id=bi_so101_leader \
       --teleop.left_arm_config.port=/dev/so101_leader_left \
       --teleop.right_arm_config.port=/dev/so101_leader_right \
       --teleop.teleop_keys="$TELEOP_KEYS" \
+      --display_data=true \
       "$@"
     ;;
 
