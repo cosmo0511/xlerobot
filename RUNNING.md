@@ -145,24 +145,59 @@ lerobot-record \
 
 ---
 
-## 3단계. SmolVLA 학습 💻 PC
+## 3단계. 학습 (SmolVLA + ACT 대조군) 💻 PC
 
+데이터셋: `bilimili/xlerobot-dice-4cam` (96개, 4cam, HF Hub 공개). 이 PC 에는 이미
+`~/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam` 에 있으니 `--dataset.root` 로
+그걸 씁니다 (다시 안 받음). 다른 PC 에서는 `--dataset.root` 줄을 빼면 Hub 에서 받습니다.
+
+처음 한 번: 학습용 패키지 (`accelerate`, `transformers` 등)
+```bash
+pip install -e '/home/user/lerobot_0.6[training,smolvla]'
+```
+
+### SmolVLA
 ```bash
 lerobot-train \
   --policy.path=lerobot/smolvla_base \
-  --dataset.repo_id=$HF_USER/xlerobot-dice-3cam \
-  --batch_size=64 \
-  --steps=20000 \
-  --output_dir=outputs/train/smolvla_home \
-  --job_name=smolvla_home \
-  --policy.device=cuda \
-  --wandb.enable=true
+  --policy.input_features=null --policy.output_features=null \
+  --dataset.repo_id=bilimili/xlerobot-dice-4cam \
+  --dataset.root=$HOME/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam \
+  --batch_size=8 --steps=20000 --save_freq=5000 --num_workers=4 \
+  --output_dir=outputs/train/smolvla_dice --job_name=smolvla_dice \
+  --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false
 ```
 
-A100 기준 20k 스텝에 약 4시간. 메모리가 부족하면 `--batch_size` 를 32, 16으로 낮추세요.
-GPU 가 없으면 [Colab 노트북](https://colab.research.google.com/github/huggingface/notebooks/blob/main/lerobot/training-smolvla.ipynb)으로 돌릴 수 있습니다.
+- `input_features=null` 이 **필수**입니다. `smolvla_base` 는 카메라 3개를 `camera1/2/3` 로
+  기대하는데 우리는 4개(`top/base/left_wrist/right_wrist`)라서, 그대로 두면 "Feature mismatch"
+  로 멈춥니다. `--rename_map` 으로 3개만 맞추면 **4번째 카메라가 조용히 버려지고** ACT(4개
+  다 봄)와 입력이 달라집니다. null 이면 데이터셋에서 4개를 다 가져오고, 추론 때도 이름을
+  바꿀 필요가 없습니다 (`arm_node.py` 가 같은 이름으로 보냄).
+- 이 노트북(RTX 4060 8GB) 실측 (2026-10-10, 5스텝): batch 8 에 GPU 4.4GB, 스텝당 0.65초
+  → 20k 스텝 약 3.6시간.
 
-끝나면 `config/robot.yaml` 의 `policy.path` 를 결과 경로로 맞추세요.
+### ACT (언어 없는 대조군)
+```bash
+lerobot-train \
+  --policy.type=act \
+  --dataset.repo_id=bilimili/xlerobot-dice-4cam \
+  --dataset.root=$HOME/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam \
+  --batch_size=4 --steps=40000 --save_freq=10000 --num_workers=4 \
+  --output_dir=outputs/train/act_dice --job_name=act_dice \
+  --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false
+```
+
+- 8GB 에서는 **batch 4 까지만** 됩니다 (batch 4 = 5GB, batch 8 은 `use_amp` 를 켜도 OOM).
+  스텝당 0.34초 → 40k 스텝 약 3.8시간. batch 가 SmolVLA 의 절반이라 스텝을 두 배로 줘서
+  본 샘플 수(32만)를 맞췄습니다.
+- **두 개를 동시에 돌리지 마세요** — 4.4 + 5 GB 라 8GB 에 안 들어갑니다. 차례로.
+- `output_dir` 이 이미 있으면 lerobot 이 거부합니다. 이어서 돌리려면 `--resume=true
+  --config_path=<output_dir>/checkpoints/last/pretrained_model/train_config.json`.
+- `push_to_hub=false` 를 빼면 lerobot 기본값(true) 때문에 `--policy.repo_id` 가 없다고 멈춥니다.
+
+끝나면 `config/robot.yaml` 의 `policy.path` 를 결과 경로로 맞추세요 (SmolVLA 는 기본값이 이미
+`outputs/train/smolvla_dice/checkpoints/last/pretrained_model`, ACT 는 `type: act` +
+`outputs/train/act_dice/checkpoints/last/pretrained_model`).
 
 ### 정책만 단독 확인
 
