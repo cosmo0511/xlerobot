@@ -169,36 +169,37 @@ pip install -e '/home/user/lerobot_0.6[training,smolvla]'
 ⚠️ batch 16 은 노트북 실측(SmolVLA b8 4.4GB, ACT b4 5GB)에서 **추정**한 값입니다 (SmolVLA ~8GB,
 ACT ~16GB). 5090 에서 아래 명령을 `--steps=20` 으로 먼저 돌려 `mem_gb` 를 확인하세요.
 
-### SmolVLA
+### 명령 — `scripts/train.sh` 가 위 규칙을 고정합니다
+
 ```bash
-lerobot-train \
-  --policy.path=lerobot/smolvla_base \
-  --policy.input_features=null --policy.output_features=null \
-  --dataset.repo_id=bilimili/xlerobot-dice-4cam \
-  --batch_size=16 --steps=80000 --save_freq=20000 --num_workers=4 \
-  --output_dir=outputs/train/smolvla_dice --job_name=smolvla_dice \
-  --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false
+./scripts/train.sh smolvla
+./scripts/train.sh act
 ```
 
-- `input_features=null` 이 **필수**입니다. `smolvla_base` 는 카메라 3개를 `camera1/2/3` 로
-  기대하는데 우리는 4개(`top/base/left_wrist/right_wrist`)라서, 그대로 두면 "Feature mismatch"
-  로 멈춥니다. `--rename_map` 으로 3개만 맞추면 **4번째 카메라가 조용히 버려지고** ACT(4개
-  다 봄)와 입력이 달라집니다. null 이면 데이터셋에서 4개를 다 가져오고, 추론 때도 이름을
-  바꿀 필요가 없습니다 (`arm_node.py` 가 같은 이름으로 보냄).
+GPU 서버에서 **컨테이너**로 돌릴 때는 `docker/README.md` (빌드·실행·결과 가져오기).
+컨테이너 안에서도 같은 `train.sh` 를 씁니다. 원본 PC 에서 5스텝씩 돌려 컨테이너 밖과
+loss 가 똑같이 나오는 것까지 확인했습니다 (2026-10-10).
 
-### ACT (언어 없는 대조군)
-```bash
-lerobot-train \
-  --policy.type=act \
-  --dataset.repo_id=bilimili/xlerobot-dice-4cam \
-  --batch_size=16 --steps=80000 --save_freq=20000 --num_workers=4 \
-  --output_dir=outputs/train/act_dice --job_name=act_dice \
-  --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false
-```
+`train.sh` 가 실제로 넘기는 것 (직접 `lerobot-train` 을 칠 일이 있으면 이대로):
+
+- SmolVLA: `--policy.path=lerobot/smolvla_base --policy.input_features=null --policy.output_features=null`
+  - `input_features=null` 이 **필수**입니다. `smolvla_base` 는 카메라 3개를 `camera1/2/3` 로
+    기대하는데 우리는 4개(`top/base/left_wrist/right_wrist`)라서, 그대로 두면 "Feature mismatch"
+    로 멈춥니다. `--rename_map` 으로 3개만 맞추면 **4번째 카메라가 조용히 버려지고** ACT(4개
+    다 봄)와 입력이 달라집니다. null 이면 데이터셋에서 4개를 다 가져오고, 추론 때도 이름을
+    바꿀 필요가 없습니다 (`arm_node.py` 가 같은 이름으로 보냄).
+- ACT: `--policy.type=act`
+- 공통: `--dataset.repo_id=bilimili/xlerobot-dice-4cam --batch_size=16 --steps=80000
+  --save_freq=20000 --num_workers=4 --output_dir=outputs/train/<정책>_dice
+  --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false`
+
+메모리 확인·연결 테스트처럼 짧게 돌릴 때만: `STEPS=20 ./scripts/train.sh act`
+(규칙과 다르면 경고를 찍습니다).
 
 ### 공통
-- 데이터는 Hub 에서 받습니다. 이 PC 처럼 로컬에 이미 있으면
-  `--dataset.root=$HOME/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam` 를 붙이세요.
+- 데이터는 Hub 에서 받습니다. 원본 PC 처럼 로컬 사본
+  (`~/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam`)이 있으면 `train.sh` 가 그걸 씁니다.
+  다른 위치면 `DATASET_ROOT=<폴더>`.
 - 처음 한 번 학습용 패키지: `pip install -e '<lerobot_0.6>[training,smolvla]'`.
   서버의 lerobot 도 **0.6.0 + `vendor/lerobot-0.6.patch`** 로 맞추세요 (체크포인트를 이 PC 추론에서 읽음).
 - 5090 에서 두 개를 **동시에** 돌려도 메모리에 들어갑니다 (추정 8 + 16GB).

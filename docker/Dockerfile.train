@@ -1,0 +1,68 @@
+# =============================================================================
+# Dockerfile.train — SmolVLA / ACT 학습 전용 컨테이너 (GPU 서버용, 예: RTX 5090)
+# =============================================================================
+#
+# 레포 루트에서 빌드합니다 (vendor/ 패치와 scripts/train.sh 를 넣어야 해서):
+#
+#   docker build -f docker/Dockerfile.train -t xlerobot-train .
+#
+# 실행·결과 가져오기는 docker/README.md.
+#
+# ■ 무엇이 들어가나
+#   - lerobot v0.6.0 + vendor/lerobot-0.6.patch  -> 원본 PC 와 같은 코드.
+#     체크포인트를 원본 PC 의 추론(arm_node.py)에서 읽으므로 버전을 맞춥니다.
+#   - 학습 패키지만 ([training,smolvla]). 로봇·카메라 드라이버는 안 넣습니다.
+#   - PyTorch 2.11 (원본 PC 와 같은 버전).
+#
+# ■ CUDA 버전 (TORCH_CUDA)
+#   RTX 5090(Blackwell)은 CUDA 12.8 이상으로 빌드된 PyTorch 가 필요합니다.
+#   cu128 = NVIDIA 드라이버 570 이상, cu130 = 580 이상. 서버에서 nvidia-smi 로
+#   드라이버를 보고 고르세요. 기본은 더 넓게 도는 cu128.
+#     docker build --build-arg TORCH_CUDA=cu130 ...
+# =============================================================================
+
+FROM python:3.12-slim
+
+ARG TORCH_CUDA=cu128
+ARG TORCH_VERSION=2.11.0
+ARG TORCHVISION_VERSION=0.26.0
+ARG LEROBOT_REF=v0.6.0
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1
+
+# git: lerobot 받기 / ffmpeg: 데이터셋 영상 디코딩(torchcodec 이 시스템 ffmpeg 를 씀)
+# libglib2.0-0: opencv(headless) 가 찾는 라이브러리
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git ffmpeg libglib2.0-0 build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyTorch 를 먼저 CUDA 휠로 깝니다. 나중에 lerobot 을 깔 때 버전 조건(<2.12)을
+# 이미 만족하므로 PyPI 의 다른 빌드로 바뀌지 않습니다.
+RUN pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} \
+        --index-url https://download.pytorch.org/whl/${TORCH_CUDA}
+
+RUN git clone --depth 1 --branch ${LEROBOT_REF} https://github.com/huggingface/lerobot.git /opt/lerobot
+COPY vendor/lerobot-0.6.patch /tmp/lerobot-0.6.patch
+RUN cd /opt/lerobot \
+    && git apply /tmp/lerobot-0.6.patch \
+    && pip install -e '.[training,smolvla]'
+
+WORKDIR /xlerobot
+COPY scripts/train.sh scripts/train.sh
+
+# 받은 모델·데이터셋은 /cache 에, 학습 결과는 /xlerobot/outputs 에.
+# 둘 다 실행할 때 서버 디스크를 붙이세요 (안 붙이면 컨테이너를 지우면 같이 사라짐).
+# 어느 사용자로 실행해도(--user) 쓸 수 있게 열어 둡니다.
+# USER/LOGNAME: --user 로 준 uid 는 컨테이너의 /etc/passwd 에 없어서, torch 가
+# 캐시 폴더 이름을 정하려고 getpass.getuser() 를 부를 때 KeyError 로 죽습니다.
+# getuser() 는 환경변수를 먼저 보므로 이걸로 충분합니다.
+ENV HF_HOME=/cache/huggingface \
+    TORCH_HOME=/cache/torch \
+    HOME=/tmp \
+    USER=xlerobot \
+    LOGNAME=xlerobot
+RUN mkdir -p /cache /xlerobot/outputs && chmod -R 777 /cache /xlerobot
+
+CMD ["bash"]

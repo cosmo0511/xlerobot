@@ -1,0 +1,11 @@
+# docker/Dockerfile.train 은 vendor/ 패치와 scripts/train.sh 만 씁니다.
+# 학습 결과·캐시를 빌드 컨텍스트로 보내지 않게 막습니다 (수 GB).
+outputs/
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+.git/
+*.ckpt
+*.safetensors
+maps/
