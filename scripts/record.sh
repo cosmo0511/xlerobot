@@ -28,10 +28,43 @@
 #
 # 라벨 키:  red  blue
 #
-# 녹화 중 키 조작:
-#   →     지금 에피소드 끝내고 다음으로
-#   ←     방금 걸 다시 찍기   ← 60초 초과·다른 주사위 접촉·반대쪽 팔 사용이면 무조건 이거
-#   ESC   녹화 전체 중지
+# 녹화 중 키 조작 (글자 키가 화살표보다 안전합니다 — SSH/VNC 에서는 화살표
+# 이스케이프 시퀀스가 쪼개지거나 늦게 도착합니다):
+#   → 또는 n    지금 에피소드 끝내고 다음으로
+#   ← 또는 r    방금 걸 다시 찍기  ← 60초 초과·다른 주사위 접촉·반대쪽 팔 사용이면 무조건 이거
+#   ESC 또는 q  녹화 중지
+#
+# ■ 원하는 데서 끊고 나중에 이어 찍기
+# ---------------------------------------------------------------------------
+# 같은 명령을 다시 치면 이어집니다 (--first 없이). 폴더가 있으면 자동 resume 이고,
+# 몇 개 찍혀 있는지는 녹화 시작 전 배너에 나옵니다.
+#
+#   ./scripts/record.sh red 8 --first   # 1회차
+#   ./scripts/record.sh red 8           # 2회차 — 9번째부터 이어짐
+#   ./scripts/record.sh red 3           # 3개만 찍고 쉬어도 됩니다
+#
+# ⚠ --first 는 **데이터셋 전체에 한 번만**입니다. 색깔마다가 아닙니다.
+#   red/blue 는 같은 데이터셋에 들어갑니다 — 지시문은 에피소드마다 따로 기록되고
+#   (task_index), 정책이 언어를 보고 팔을 고르는지 보려면 **한 데이터셋에 둘 다**
+#   있어야 합니다. 그게 이 실험의 전부입니다 (README "지시문만 red ↔ blue").
+#
+#   ./scripts/record.sh red  8 --first   # 데이터셋 생성 (딱 한 번)
+#   ./scripts/record.sh blue 8           # --first 없음. 같은 데이터셋에 이어짐
+#   ./scripts/record.sh red  8           # 계속 이어짐
+#
+#   데이터셋을 쪼개는 건 **카메라 구성**뿐입니다 (-3cam / -4cam). 관측 키가
+#   다른 데이터를 섞으면 깨지니까요. 이어찍기 때 lerobot 이 features(카메라 키)와
+#   fps 를 검사해서 어긋나면 거부합니다.
+#
+# ⚠ **끊을 타이밍이 중요합니다.** ESC 를 에피소드 도중에 누르면 그때까지 찍힌
+#   토막이 **저장됩니다** (lerobot_record.py 는 stop_recording 이어도
+#   save_episode() 를 부릅니다). 깔끔하게 멈추려면:
+#
+#     1. → (또는 n) 로 지금 에피소드를 정상 종료
+#     2. "Reset the environment" 가 뜬 **리셋 시간에** ESC
+#
+#   도중에 ESC 를 눌러 토막이 생겼으면 마지막 에피소드를 지우세요:
+#     ./scripts/run_4cam.sh droplast
 #
 # 바퀴 (키보드, 리더암과 같이 씀):
 #   g      바퀴 잠금/해제 토글 — **시작은 잠김 상태**입니다. 한 번 눌러야 움직입니다.
@@ -56,13 +89,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # ------------------------------- 설정 ----------------------------------------
-HF_USER="${HF_USER:?환경변수 HF_USER 를 먼저 설정하세요. 예: export HF_USER=songyeon}"
+# HF_USER 는 dataset_path.sh 가 확인합니다.
 
 # 카메라 구성. config/cameras.<이름>.yaml 이 있어야 합니다.
 CAMERA_SET="${CAMERA_SET:-3cam}"
 
-# 데이터셋 이름에 카메라 구성을 붙여서 섞이지 않게 합니다.
-REPO_ID="${REPO_ID:-$HF_USER/xlerobot-dice-$CAMERA_SET}"
+# 데이터셋 이름·폴더·진행 개수는 dataset_path.sh 한 곳에서 정합니다
+# (run_4cam.sh status / droplast 도 같은 폴더를 봐야 하므로 두 곳에 안 적습니다).
+# -> REPO_ID, DATASET_ROOT, DONE, PUSH
+# shellcheck source=scripts/dataset_path.sh
+source "$SCRIPT_DIR/dataset_path.sh"
 
 # 라즈베리파이 (bi_so_base_host 가 떠 있는 쪽). IP 로 줘도 됩니다.
 PI_HOST="${PI_HOST:-xlerobot2.local}"
@@ -132,11 +168,32 @@ if [ -z "$KEY" ] || ! TASK="$(label_for "$KEY")"; then
   exit 1
 fi
 
-# 첫 세션만 resume=false. 나머지는 같은 데이터셋에 이어붙입니다.
-if [ "$FIRST" = "--first" ]; then
-  RESUME="false"
-else
+# 이어찍기는 **폴더가 있는지로 판정합니다.** 손으로 --first 를 기억하지 않아도
+# 됩니다 — 중간에 ESC 로 끊었든 네트워크가 끊겼든, 같은 명령을 다시 치면 이어집니다.
+#
+#   폴더 없음 -> 새로 만듦 (resume=false)
+#   폴더 있음 -> 이어붙임 (resume=true)
+#
+# --first 는 이제 "정말 처음인지" 확인하는 **안전장치**입니다. 데이터가 이미
+# 있는데 --first 를 주면 멈춥니다 (실수로 처음부터 다시 찍는 걸 막습니다).
+if [ -d "$DATASET_ROOT" ] && [ "$DONE" != "0" ]; then
   RESUME="true"
+  if [ "$FIRST" = "--first" ]; then
+    echo "이미 에피소드 $DONE 개가 있습니다: $DATASET_ROOT" >&2
+    echo >&2
+    echo "--first 는 처음 한 번만 씁니다. 이어서 찍으려면 --first 를 떼세요:" >&2
+    echo "  $0 $KEY $EPISODES" >&2
+    echo >&2
+    echo "정말 처음부터 다시 찍으려면 폴더를 직접 옮기거나 지우세요 (되돌릴 수 없습니다)." >&2
+    exit 1
+  fi
+else
+  RESUME="false"
+  if [ "$FIRST" != "--first" ]; then
+    echo "데이터셋이 아직 없습니다: $DATASET_ROOT" >&2
+    echo "처음이면 --first 를 붙이세요:  $0 $KEY $EPISODES --first" >&2
+    exit 1
+  fi
 fi
 
 cat <<EOF
@@ -144,14 +201,19 @@ cat <<EOF
 ==================================================================
   라벨      : "$TASK"
   데이터셋  : $REPO_ID
-  에피소드  : $EPISODES 개   (이어붙이기: $RESUME)
+  폴더      : $DATASET_ROOT
+  지금까지  : $DONE 개 찍혀 있음   (이어붙이기: $RESUME)
+  이번에    : $EPISODES 개 더  ->  끝나면 $((DONE + EPISODES)) 개
+  Hub 업로드: $PUSH
 
   파이      : $PI_HOST   (host.sh 를 같은 CAMERA_SET 으로 띄웠나요?)
   카메라 구성: $CAMERA_SET   (fps $CAM_FPS)
 $CAM_SUMMARY
 ==================================================================
 
-  → 다음으로   ← 다시 찍기   ESC 중지
+  → / n 다음으로   ← / r 다시 찍기   ESC / q 중지
+  · 깔끔하게 멈추려면: → 로 에피소드를 끝내고 **리셋 시간에** ESC
+    (에피소드 도중 ESC 는 토막을 저장합니다 -> ./scripts/run_4cam.sh droplast)
   g 바퀴 잠금 해제/잠금   w/s/a/d 이동   z/x 회전   c/v 속도
 
   · 시작: 테이프 위치(좌/중앙/우)에 바퀴를 맞추고, 팔은 파킹 자세
@@ -175,6 +237,8 @@ lerobot-record \
   --teleop.right_arm_config.port="$LEADER_RIGHT_PORT" \
   --teleop.teleop_keys="$TELEOP_KEYS" \
   --dataset.repo_id="$REPO_ID" \
+  --dataset.root="$DATASET_ROOT" \
+  --dataset.push_to_hub="$PUSH" \
   --dataset.single_task="$TASK" \
   --dataset.num_episodes="$EPISODES" \
   --dataset.episode_time_s="$EPISODE_TIME_S" \

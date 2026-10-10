@@ -50,6 +50,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -87,9 +88,20 @@ def build_robot_config(arms_cfg: dict):
     from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
     from lerobot.robots.bi_so_follower import BiSOBaseClientConfig
 
-    cam_cfg = resolve_cameras(arms_cfg)
+    # CAMERA_SET 이 있으면 robot.yaml 을 덮어씁니다 (record.sh / host.sh 와 같은 방법).
+    # 정책은 학습 때 본 이미지 키만 받습니다 — 구성이 어긋나면 행동을 하나도 못
+    # 내놓고 팔이 가만히 있습니다. 그래서 덮어썼으면 경고로 크게 남깁니다.
+    env_set = os.environ.get("CAMERA_SET") or None
+    yaml_set = arms_cfg.get("camera_set")
+    if env_set and env_set != yaml_set:
+        logger.warning(
+            "CAMERA_SET=%s 가 robot.yaml 의 camera_set=%s 를 덮어씁니다. "
+            "학습된 정책이 %s 으로 찍은 데이터로 학습된 것인지 확인하세요.",
+            env_set, yaml_set, env_set)
+
+    cam_cfg = resolve_cameras(arms_cfg, env_override=env_set)
     logger.info("카메라 구성 %s — 관측 키: %s",
-                arms_cfg.get("camera_set", "(robot.yaml 인라인)"),
+                env_set or yaml_set or "(robot.yaml 인라인)",
                 ", ".join(observation_keys(cam_cfg)))
 
     # 클라이언트는 이 이름으로 파이가 보낸 프레임을 받습니다 (flat 레이아웃).

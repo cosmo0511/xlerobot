@@ -152,13 +152,21 @@ def load_camera_set(name: str) -> dict:
     return cams
 
 
-def resolve_cameras(arms_cfg: dict) -> dict:
+def resolve_cameras(arms_cfg: dict, env_override: str | None = None) -> dict:
     """robot.yaml 의 arms 블록에서 카메라 구성을 뽑습니다.
 
     `camera_set: "3cam"` 이 있으면 그 파일을 읽습니다.
     없으면 arms 블록에 직접 적힌 카메라 블록을 씁니다(예전 방식 호환).
+
+    env_override 를 주면 그게 robot.yaml 을 **덮어씁니다.** 녹화(record.sh)와
+    호스트(host.sh)는 CAMERA_SET 환경변수로 구성을 고르는데, 추론만 robot.yaml 을
+    고쳐야 했습니다. 세 경로를 같은 방법으로 전환할 수 있게 뚫어둔 구멍입니다.
+
+    이 함수는 환경변수를 **직접 읽지 않습니다.** 부르는 쪽이 넘깁니다 — 그래야
+    테스트가 주변 환경에 안 휘둘리고, robot.yaml 을 덮어쓴 걸 부르는 쪽에서
+    로그로 남길 수 있습니다 (어긋나면 팔이 안 움직이는 종류의 설정이라서).
     """
-    name = arms_cfg.get("camera_set")
+    name = env_override or arms_cfg.get("camera_set")
     if name:
         return load_camera_set(str(name))
 

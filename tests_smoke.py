@@ -286,8 +286,47 @@ code = "\n".join(l for l in record_sh.splitlines()
 assert "/dev/video" not in code, "record.sh 에 카메라 장치 경로가 하드코딩됐습니다"
 assert "camera_config.py" in code, "record.sh 가 camera_config.py 를 안 씁니다"
 assert "CAMERA_SET" in code, "record.sh 에 CAMERA_SET 이 없습니다"
-assert "xlerobot-dice-$CAMERA_SET" in code, "데이터셋 이름에 카메라 구성이 안 붙습니다"
 ok("record.sh 가 카메라를 하드코딩하지 않고 구성 파일을 읽음")
+
+
+# --- 11b. 중간에 끊었다가 이어 찍는 게 된다 -------------------------------------
+# lerobot 0.6 은 데이터셋을 새로 만들 때 repo_id 에 타임스탬프를 붙입니다
+# (configs/dataset.py stamp_repo_id). 그래서 --dataset.root 를 고정하지 않으면
+# 1회차는 .../xlerobot-dice-4cam_20261010_145603/ 에 들어가고, 2회차의
+# resume("xlerobot-dice-4cam") 은 그 폴더를 못 찾아 Hub 로 가서 401 로 죽습니다.
+# **--root 가 빠지면 2회차부터 녹화가 아예 안 됩니다.** 그래서 여기서 못 빠지게 막습니다.
+dspath_sh = (pathlib.Path(__file__).resolve().parent / "scripts" / "dataset_path.sh").read_text(
+    encoding="utf-8")
+dscode = "\n".join(l for l in dspath_sh.splitlines()
+                    if not l.lstrip().startswith("#"))
+assert "xlerobot-dice-$CAMERA_SET" in dscode, "데이터셋 이름에 카메라 구성이 안 붙습니다"
+assert "DATASET_ROOT=" in dscode, "dataset_path.sh 가 DATASET_ROOT 를 안 정합니다"
+assert "dataset_path.sh" in code, "record.sh 가 dataset_path.sh 를 안 씁니다"
+assert '--dataset.root="$DATASET_ROOT"' in code, \
+    "record.sh 에 --dataset.root 가 없습니다 — 2회차부터 이어찍기가 안 됩니다"
+# 이어찍기 판정은 폴더가 있는지로 합니다 (--first 를 기억하지 않아도 되게).
+assert "RESUME=" in code and "meta/info.json" in dscode, \
+    "이어찍기 판정이 없습니다"
+# Hub 업로드는 꺼져 있어야 합니다. lerobot 기본값이 true 라서, 그냥 두면
+# 블록마다 데이터셋이 외부로 올라갑니다.
+assert '--dataset.push_to_hub="$PUSH"' in code, "record.sh 가 push_to_hub 를 안 정합니다"
+assert 'PUSH_TO_HUB:-0' in dscode, "Hub 업로드가 기본으로 켜져 있습니다"
+ok("이어찍기 — --dataset.root 고정 + 폴더로 resume 판정, Hub 업로드는 기본 꺼짐")
+
+
+# --- 11c. 4cam 진입점이 구성을 한 곳에서 박는다 ---------------------------------
+# 파이(host.sh)와 PC(record.sh)의 CAMERA_SET 이 어긋나면, 파이가 안 보낸 카메라가
+# bi_so_base_client 에서 np.zeros 로 채워져 **검은 화면이 조용히 녹화됩니다.**
+run4_sh = (pathlib.Path(__file__).resolve().parent / "scripts" / "run_4cam.sh").read_text(
+    encoding="utf-8")
+r4code = "\n".join(l for l in run4_sh.splitlines()
+                    if not l.lstrip().startswith("#"))
+assert "export CAMERA_SET=4cam" in r4code, "run_4cam.sh 가 CAMERA_SET 을 내보내지 않습니다"
+assert "/dev/video" not in r4code, "run_4cam.sh 에 장치 경로가 하드코딩됐습니다"
+assert "preflight_cameras.py" in r4code, "run_4cam.sh 가 검증을 안 돌립니다"
+# record 는 검증을 통과해야 녹화를 시작해야 합니다.
+assert "SKIP_CHECK" in r4code, "record 앞에 카메라 검증이 없습니다"
+ok("run_4cam.sh 가 CAMERA_SET=4cam 을 한 곳에서 박고, 녹화 전에 검증을 돌림")
 
 
 # --- 12. 녹화에 바퀴가 들어간다 -------------------------------------------------

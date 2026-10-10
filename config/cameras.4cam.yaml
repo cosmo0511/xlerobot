@@ -34,7 +34,20 @@
 # 녹화 중 프레임이 끊기면 fps 를 15 로 낮추거나 허브를 나눠 꽂으세요.
 #   (fps 를 바꾸면 policy.fps 도 같이 맞춰야 합니다 — config/robot.yaml)
 #
-# 확인:  python src/camera_config.py 4cam --check
+# ■ 아래 장치 경로는 **추측값입니다.** 파이에서 고치고 시작하세요
+# ---------------------------------------------------------------------------
+# UVC 카메라 하나가 /dev/video* 를 보통 **2개** 만듭니다 (하나는 메타데이터 노드).
+# 그래서 0/2/4/6 이 맞다는 보장이 없고, 재부팅하면 번호도 바뀝니다.
+#
+#   🍓 ./scripts/run_4cam.sh scan      어느 노드가 진짜 카메라인지 + 고정 경로
+#   🍓 ./scripts/run_4cam.sh identify  장치마다 한 장 찍어 저장 -> 보고 이름 배정
+#   🍓 ./scripts/run_4cam.sh selftest  4대가 동시에 열리는지 + 실측 fps
+#   💻 ./scripts/run_4cam.sh check     파이에서 받은 그림이 맞는지 (녹화와 같은 경로)
+#
+# scan 이 알려주는 /dev/v4l/by-id/... 또는 /dev/v4l/by-path/... 를 쓰세요.
+# /dev/videoN 은 재부팅마다 바뀝니다.
+#
+# 확인:  python src/camera_config.py 4cam --check   (경로가 있는지만 봅니다)
 
 # --- 팔에 안 묶인 카메라 (접두사 없음) ----------------------------------------
 top_cameras:

@@ -31,6 +31,7 @@ PC 와 파이는 무선으로 붙습니다. 패치된 lerobot 0.6 이 둘 다 �
 | `scripts/record.sh`, `config/cameras.*.yaml` | ✅ **지금 쓰는 것** | 데모 데이터 수집 |
 | `src/camera_config.py` | ✅ 지금 쓰는 것 | 녹화·추론이 공유하는 카메라 설정 |
 | `src/view_cameras.py` | ✅ 지금 쓰는 것 | 카메라 화면 확인 (따로 실행) |
+| `src/preflight_cameras.py`, `scripts/run_4cam.sh` | ✅ 지금 쓰는 것 | 4cam 검증 + 4cam 전용 진입점 |
 | `src/arm_node.py`, `src/policy_client.py` | ⏳ 학습 끝나면 | SmolVLA 추론 |
 | `src/nav_node.py`, `src/navigation.py` | ❌ 안 씀 | 자율주행 안 쓰기로 함 (`navigation.enabled: false`) |
 | `src/agent.py`, `src/task_registry.py` | ⏸ 다단계 태스크 단계 | 말로 명령 → 태스크 라우팅 (LLM) |
@@ -113,6 +114,57 @@ CAMERA_SET=4cam ./scripts/record.sh red 12 --first
 한 번 찍은 데이터셋으로 셋 다 돌릴 수 있습니다. 다만 lerobot 은 데이터셋
 메타에서 입력 feature 를 자동으로 뽑으므로, 일부만 쓰려면 학습 config 에서
 입력 이미지 키를 명시적으로 제한해야 합니다.
+
+### 4cam 으로 돌리는 순서
+
+`run_4cam.sh` 가 `CAMERA_SET=4cam` 을 한 곳에서 박습니다. 파이와 PC 의 구성이
+어긋나면 **파이가 안 보낸 카메라 칸이 검은 화면으로 조용히 녹화됩니다**
+(`bi_so_base_client` 가 못 받은 카메라를 `np.zeros` 로 채웁니다). 그래서
+`record` 는 검증을 통과해야 녹화를 시작합니다.
+
+```bash
+# 🍓 파이 — 처음 한 번 (카메라 자리 정하기)
+./scripts/run_4cam.sh scan        # 어느 /dev/video* 가 진짜 카메라인지 + 고정 경로
+./scripts/run_4cam.sh identify    # 장치마다 한 장 찍어 저장 -> 보고 yaml 에 배정
+./scripts/run_4cam.sh selftest    # 4대가 동시에 열리는지 + 실측 fps + 대역폭
+
+# 🍓 파이 — 매번
+./scripts/run_4cam.sh host
+
+# 💻 PC — 매번
+./scripts/run_4cam.sh check              # 녹화와 같은 경로로 검증
+./scripts/run_4cam.sh record red 8 --first
+./scripts/run_4cam.sh record red 8       # 이어찍기 (--first 없이)
+./scripts/run_4cam.sh status             # 몇 개 찍었나
+```
+
+### 중간에 끊고 이어 찍기
+
+같은 명령을 다시 치면 이어집니다. `--first` 는 **데이터셋 전체에 한 번만**이고
+(색깔마다가 아닙니다), 데이터가 이미 있는데 주면 멈춥니다 (실수로 처음부터 다시
+찍는 걸 막습니다).
+
+```bash
+./scripts/run_4cam.sh record red  8 --first   # 데이터셋 생성 (딱 한 번)
+./scripts/run_4cam.sh record blue 8           # 같은 데이터셋에 이어짐
+./scripts/run_4cam.sh record red  8           # 계속 이어짐
+```
+
+red/blue 가 한 데이터셋에 섞이는 게 **맞습니다.** 지시문은 에피소드마다 따로
+기록되고(`task_index`), 정책이 언어를 보고 팔을 고르는지 보려면 한 데이터셋에
+둘 다 있어야 합니다. 확인한 동작: 새 지시문으로 이어찍으면 추가되고(`task_index 1`),
+이미 있는 지시문이면 중복 등록되지 않습니다. 데이터셋을 쪼개는 건 **카메라 구성**
+뿐입니다 — 이어찍기 때 lerobot 이 features(카메라 키)와 fps 를 검사해 어긋나면 거부합니다.
+
+깔끔하게 멈추는 법: `→`(또는 `n`)로 지금 에피소드를 끝내고, **리셋 시간에**
+`ESC`(또는 `q`). 에피소드 **도중** `ESC` 는 그때까지 찍힌 토막을 저장해버립니다
+(`lerobot_record.py` 가 `stop_recording` 이어도 `save_episode()` 를 부릅니다).
+토막이 생겼으면 `./scripts/run_4cam.sh droplast` 로 지우세요.
+
+> 데이터셋 폴더는 `scripts/dataset_path.sh` 가 고정합니다. lerobot 0.6 은 새로
+> 만들 때 repo_id 에 타임스탬프를 붙이므로(`stamp_repo_id`), `--dataset.root` 를
+> 고정하지 않으면 **2회차부터 이어찍기가 아예 안 됩니다** (폴더를 못 찾고 Hub 로
+> 가서 401). Hub 업로드는 기본으로 꺼져 있습니다 — `PUSH_TO_HUB=1` 로 켜세요.
 
 `4cam` 을 쓸 때 주의:
 
