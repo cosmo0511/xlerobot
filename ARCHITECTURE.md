@@ -40,7 +40,7 @@
         ◄─── 도착/실패 ────────────────────────────
 
 💻 PC ────── ZMQ REQ/REP ───────────────────────► 🦾 Pi-A
-             {"cmd":"run","task":"Water the plant"}
+             {"cmd":"run","task":"Pick up the red dice"}
         ◄─── {"status":"done"} ────────────────────
 ```
 
@@ -103,14 +103,18 @@ PC 가 팔을 직접 잡으면 30Hz 제어 루프에 네트워크 지터가 섞�
 
 ```yaml
 locations:
-  - id: bedroom
-    name: 안방
+  - id: desk_1
+    name: 1번 책상
     pose: {x: 2.41, y: -1.08, yaw: 92.5}   # Nav2 map 프레임, yaw 는 도
 
 tasks:
-  - prompt: "Water the plant"              # 학습 라벨과 글자까지 동일
-    location: bedroom
-    max_seconds: 150
+  - id: red_transfer
+    name: 빨간 주사위 옮기기
+    steps:
+      - location: desk_1
+        prompt: "Pick up the red dice"     # 학습 라벨과 글자까지 동일
+        max_seconds: 60
+        expect_holding: true
 ```
 
 - `task_registry.py` 가 **프로그램 시작 시점에 검증**합니다. 잘못된 설정이면 로봇이
@@ -161,14 +165,14 @@ config/cameras.3cam.yaml ──┬── scripts/record.sh   (녹화)
 ## 전체 흐름
 
 ```
-사용자: "화분에 물 좀 줘"
+사용자: "빨간 거 가져와"
     │
-    ├─ agent.CommandParser        Gemini 로 라벨 중 하나로 분류
-    │                             → "Water the plant"
+    ├─ agent.CommandParser        Gemini 로 태스크 id 하나로 분류
+    │                             → "red_transfer"
     │                             (스키마 enum 이라 다른 문자열 불가)
     │
-    ├─ registry.location_of(...)  위치는 코드가 결정. LLM 출력 안 씀
-    │                             → "bedroom"
+    ├─ registry.tasks[...].steps  위치·지시문은 코드가 결정. LLM 출력 안 씀
+    │                             → 1단계 "desk_1"
     │
     ├─ arms.park()                🦾 Pi-A: 팔을 주행 자세로
     │                             → 실패하면 여기서 중단
@@ -177,7 +181,7 @@ config/cameras.3cam.yaml ──┬── scripts/record.sh   (녹화)
     │                             도착 후 settle_s 만큼 정지
     │                             → arrived 아니면 여기서 중단
     │
-    └─ arms.run("Water the plant", max_seconds=150)
+    └─ arms.run("Pick up the red dice", max_seconds=60)
                                   🦾 Pi-A: 30Hz 루프
                                   💻 PC:   SmolVLA 청크 계산
                                   → {"status": "done"}

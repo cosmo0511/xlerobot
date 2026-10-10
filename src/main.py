@@ -8,7 +8,7 @@ main.py — 💻 GPU PC 에서 실행하는 에이전트 진입점.
     python src/main.py
 
     # 명령 하나만 실행하고 종료 (시연 스크립트용)
-    python src/main.py --once "화분에 물 줘"
+    python src/main.py --once "빨간 거 가져와"
 
 기기 3대 중 이 파일은 PC 담당입니다.
     🦾 Pi-A   arm_node.py        (팔 + 카메라)

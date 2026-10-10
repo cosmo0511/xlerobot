@@ -121,8 +121,8 @@ lerobot-record \
   --teleop.left_arm_config.port=/dev/ttyACM2 \
   --teleop.right_arm_config.port=/dev/ttyACM3 \
   --teleop.id=home_bi_leader \
-  --dataset.repo_id=$HF_USER/xlerobot-home \
-  --dataset.single_task="Water the plant" \
+  --dataset.repo_id=$HF_USER/xlerobot-dice-3cam \
+  --dataset.single_task="Pick up the red dice" \
   --dataset.num_episodes=50 \
   --display_data=true
 ```
@@ -150,7 +150,7 @@ lerobot-record \
 ```bash
 lerobot-train \
   --policy.path=lerobot/smolvla_base \
-  --dataset.repo_id=$HF_USER/xlerobot-home \
+  --dataset.repo_id=$HF_USER/xlerobot-dice-3cam \
   --batch_size=64 \
   --steps=20000 \
   --output_dir=outputs/train/smolvla_home \
@@ -175,8 +175,8 @@ lerobot-rollout \
   --robot.type=bi_so_follower \
   --robot.left_arm_config.port=/dev/ttyACM0 \
   --robot.right_arm_config.port=/dev/ttyACM1 \
-  --robot.cameras='{ ... 2단계와 동일 ... }' \
-  --task="Water the plant" \
+  "${CAM_ARGS[@]}" \    # 2단계와 동일 (camera_config.py 로 생성)
+  --task="Pick up the red dice" \
   --policy.path=outputs/train/smolvla_home/checkpoints/last/pretrained_model
 ```
 
@@ -273,11 +273,11 @@ python src/main.py
 ```
 
 ```
-명령 > 화분에 물 좀 줘
+명령 > 빨간 거 가져와
 명령 수신: {'cmd': 'park'}
-안방 도착
-명령 수신: {'cmd': 'run', 'task': 'Water the plant'}
-결과: {'status': 'done', 'task_prompt': 'Water the plant', ...}
+1번 책상 도착
+명령 수신: {'cmd': 'run', 'task': 'Pick up the red dice'}
+결과: {'status': 'done', 'task_id': 'red_transfer', ...}
 ```
 
 시연 스크립트로는 한 줄씩:
