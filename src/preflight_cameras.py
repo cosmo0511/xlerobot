@@ -460,6 +460,13 @@ def judge(stats: dict[str, CamStats], elapsed: float, want_fps: int,
           local: bool) -> list[Problem]:
     """측정 결과 -> 고쳐야 할 것 목록. 비어 있으면 녹화해도 됩니다."""
     problems: list[Problem] = []
+    # 원격에서는 호스트가 모든 카메라를 **한 메시지**로 보냅니다. 그래서 무선이
+    # 모자라면 전부 같이 느려지고, 한두 대만 느리면 그 카메라 자체(파이에서)가
+    # 느린 겁니다 — 보통 어두워서 자동 노출이 길어진 것.
+    slow = {n for n, s in stats.items()
+            if s.opened and s.unique and s.fps(elapsed) < want_fps * FPS_FLOOR}
+    live = [n for n, s in stats.items() if s.opened and s.unique]
+    all_slow = bool(live) and len(slow) == len(live)
     for name, s in stats.items():
         if not s.opened:
             problems.append(Problem(name, s.error or "열 수 없음",
@@ -485,8 +492,12 @@ def judge(stats: dict[str, CamStats], elapsed: float, want_fps: int,
                 "허브를 나눠 꽂거나, yaml 의 fps 를 낮추세요 "
                 "(policy.fps 도 같이 맞춰야 합니다)."
                 if local else
-                "무선 대역폭이 모자랍니다. LEROBOT_JPEG_QUALITY 를 낮추거나 "
-                "yaml 의 fps 를 낮추세요."))
+                "무선 대역폭이 모자랍니다 (카메라가 전부 같이 느림). "
+                "LEROBOT_JPEG_QUALITY 를 낮추거나 yaml 의 fps 를 낮추세요."
+                if all_slow else
+                "무선 문제가 아닙니다 — 다른 카메라는 정상입니다. 이 카메라가 파이에서 "
+                "느린 겁니다. 보통 어두워서 자동 노출이 길어진 것이니 조명을 더 주거나 "
+                "렌즈가 가려졌는지 보세요. 파이에서 run_4cam.sh selftest 로 따로 재보세요."))
 
         if local and s.fourcc and s.fourcc != s.want_fourcc:
             problems.append(Problem(
