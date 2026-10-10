@@ -26,14 +26,20 @@
 #   5AE6084303 -> [1..9]  = 오른팔 (바퀴 7/8/9)
 #   5AE6085476 -> [1..6]  = 왼팔
 #
-# id 는 캘리브레이션 파일 이름입니다 (<id>_left.json / <id>_right.json):
-#   ls ~/.cache/huggingface/lerobot/calibration/robots/bi_so_base_follower/
+# id 는 캘리브레이션 파일 이름입니다 (<id>_left.json / <id>_right.json).
+# **so_follower/ 아래에 있습니다** — bi_so_base_follower/ 가 아닙니다. 양팔 로봇이
+# 팔 두 개를 각각 SOFollower 로 열어서 캘리브레이션도 팔별로 저장되기 때문입니다.
+#   ls ~/.cache/huggingface/lerobot/calibration/robots/so_follower/
+#
+# 파이에 id 가 셋 있습니다 (2026-10-10): bi_follower / bi_so101 / home_bi.
+# **bi_so101 을 씁니다** — arms.id, record.sh 의 ROBOT_ID, 리더 캘리브레이션
+# (bi_so101_leader_*) 이 전부 이 이름입니다. home_bi 는 예전 2대 구성 시절 값.
 #
 # 환경변수 FOLLOWER_LEFT_PORT / FOLLOWER_RIGHT_PORT / FOLLOWER_ID 가 있으면 그게 우선.
 host:
   left_port:  "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE6085476-if00"
   right_port: "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE6084303-if00"
-  id:         null              # ← 캘리브레이션 파일 이름. 파이에서 확인해서 채우세요
+  id:         "bi_so101"        # so_follower/bi_so101_{left,right}.json
 
 # --- 💻 PC : 추론 노드 (src/arm_node.py) -------------------------------------
 # 녹화(record.sh)와 같은 bi_so_base_client 로 파이 호스트에 붙습니다.
