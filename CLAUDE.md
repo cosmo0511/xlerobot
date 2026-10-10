@@ -27,10 +27,10 @@ action chunk 방식(한 번에 50스텝 받아오기)이 여기서 필수입니�
 |---|---|
 | **주행** | **자율주행(Nav2)은 안 씁니다** (2026-10 결정). 바퀴는 텔레옵으로 녹화하고 정책이 직접 냅니다. `robot.yaml` 의 `navigation.enabled: false` → 에이전트의 이동 단계는 건너뜀. Nav2 코드(`nav_node.py`, `NAV2_SETUP.md`)는 지우지 않고 남겨둠 |
 | **태스크** | **1m 주행 → 지시한 색(빨강/파랑) 주사위를 그쪽 팔로 집어 바구니에.** 1단계, 지시문 2종. SmolVLA vs ACT(언어 없는 대조군)로 언어 효과 검증. 원본: 실험설계 마일스톤 PPT → 절차는 **`COLLECTING.md`**. (예전 2책상·3색 태스크는 폐기) |
-| **데이터** | 아직 **한 에피소드도 안 찍었습니다** (10/10 기준). 목표 96개 = 8개 × 12블록 (순서표: `COLLECTING.md` 3절) |
+| **데이터** | **96개 완료 (2026-10-10, 4cam)**, red 48 / blue 48, 56분. HF Hub **공개**: `bilimili/xlerobot-dice-4cam` (HF 계정은 `bilimili` — GitHub `cosmo0511` 과 다름. PC 로컬 폴더는 `~/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam`). 블록 8 자리(ep57–64, idx 56–63)는 실수로 **블록 9 내용**을 찍어 지시문을 red 로 고쳤고, 블록 8 은 그 뒤(ep65–72)에 찍음 → `COLLECTING.md` 3절. 프레임 손실 0 (`python src/check_dataset.py <repo>`) |
 | **하드웨어** | 다 있습니다 (베이스캠 포함) |
 | **카메라** | 3cam / 4cam 둘 다 지원. `CAMERA_SET` 으로 전환 (추론도 이제 `CAMERA_SET` 이 `robot.yaml` 을 덮어씀). **4cam USB 실측 통과** (4대 동시 MJPG 30fps, 26 Mbps). 무선 구간(`run_4cam.sh check`)은 아직 |
-| **일정** | PPT 기준 10/10 데모 마무리·학습 → 10/11 예비 평가 → **10/12 본 평가 72회** → 10/23 제출. **데모 0개라 이미 늦음** |
+| **일정** | PPT 기준 10/10 데모 마무리·학습 → 10/11 예비 평가 → **10/12 본 평가 72회** → 10/23 제출. 데모는 10/10 에 끝남, 다음은 학습 (`RUNNING.md` 3단계) |
 
 ## 로봇 클래스 — 우리가 직접 확장했습니다
 
