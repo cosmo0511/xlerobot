@@ -77,8 +77,17 @@ LAYOUTS = ("per_arm", "flat")
 DEFAULT_LAYOUT = "per_arm"
 
 # 로봇 타입 -> 레이아웃. 모르는 타입은 per_arm 으로 둡니다.
+#
+# 우리 녹화 경로 (lerobot 0.6 + vendor/lerobot-0.6.patch):
+#   PC  : bi_so_base_client   — 카메라를 열지 않고 파이가 보낸 JPEG 만 받음.
+#                               이름을 키로 맞추므로 최종 이름을 그대로 넘김 → flat
+#   파이 : bi_so_base_follower — 실제로 카메라를 엶 (bi_so_base_host 가 사용).
+#                               bi_so_follower 를 상속해서 접두사 자동 → per_arm
 ROBOT_LAYOUTS = {
     "bi_so_follower": "per_arm",
+    "bi_so_base_follower": "per_arm",
+    "bi_so_client": "flat",
+    "bi_so_base_client": "flat",
     "bi_so101_follower": "per_arm",
     "xlerobot": "flat",
     "xlerobot_client": "flat",

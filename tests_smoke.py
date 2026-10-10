@@ -287,4 +287,32 @@ assert "xlerobot-dice-$CAMERA_SET" in code, "데이터셋 이름에 카메라 �
 ok("record.sh 가 카메라를 하드코딩하지 않고 구성 파일을 읽음")
 
 
+# --- 12. 녹화에 바퀴가 들어간다 -------------------------------------------------
+# bi_so_follower + bi_so_leader 로 찍으면 액션이 팔 12차원뿐이라 정책이 주행을
+# 못 배웁니다. 바퀴(x.vel/y.vel/theta.vel)는 bi_so_base_leader 가 키보드에서
+# 만들어 액션에 넣고, bi_so_base_client 가 파이로 보냅니다.
+assert "--robot.type=\"$ROBOT_TYPE\"" in code and 'ROBOT_TYPE="bi_so_base_client"' in code, \
+    "record.sh 가 bi_so_base_client 로 녹화하지 않습니다 — 바퀴가 액션에 안 들어갑니다"
+assert "--teleop.type=bi_so_base_leader" in code, \
+    "record.sh 가 bi_so_base_leader 를 안 씁니다 — 키보드 주행이 녹화되지 않습니다"
+assert "--robot-type=\"$ROBOT_TYPE\"" in code, \
+    "record.sh 카메라 인자가 클라이언트(flat) 레이아웃이 아닙니다"
+assert layout_for_robot("bi_so_base_client") == "flat"
+assert layout_for_robot("bi_so_base_follower") == "per_arm"
+ok("record.sh 가 bi_so_base_client + bi_so_base_leader 로 녹화 (액션에 바퀴 포함)")
+
+# 파이(host.sh)와 PC(record.sh)의 카메라 이름이 같아야 프레임이 들어옵니다.
+host_sh = (pathlib.Path(__file__).resolve().parent / "scripts" / "host.sh").read_text(
+    encoding="utf-8")
+host_code = "\n".join(l for l in host_sh.splitlines() if not l.lstrip().startswith("#"))
+assert "/dev/video" not in host_code, "host.sh 에 카메라 장치 경로가 하드코딩됐습니다"
+assert "camera_config.py" in host_code and "CAMERA_SET" in host_code
+for cams in (cam3, cam4):
+    host_names = set(camera_names(cams))  # per_arm: 접두사는 lerobot 이 붙임
+    flat_arg = record_args(cams, "flat")[0]
+    for name in host_names:
+        assert f"{name}: " in flat_arg, f"클라이언트 카메라 인자에 {name} 이 없음"
+ok("host.sh(파이)와 record.sh(PC)가 같은 yaml 의 같은 카메라 이름을 씀")
+
+
 print("\n전부 통과.")

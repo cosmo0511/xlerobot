@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# record.sh — 🦾 Pi-A 에서 데모를 녹화합니다.
+# record.sh — 💻 PC 에서 데모를 녹화합니다 (양팔 + 바퀴 주행까지).
 # =============================================================================
+#
+# 먼저 라즈베리파이에서 호스트를 띄워 두세요:   ./scripts/host.sh
+# (로봇·카메라는 파이에 USB 로 붙어 있고, PC 는 무선으로 붙습니다.)
 #
 #   ./scripts/record.sh pick_red  40 --first    # 맨 처음 세션 (데이터셋 새로 만듦)
 #   ./scripts/record.sh pick_blue 40            # 이어붙이기
@@ -26,6 +29,18 @@
 #   ←     방금 걸 다시 찍기   ← 색을 잘못 집었으면 무조건 이거
 #   ESC   녹화 전체 중지
 #
+# 바퀴 (키보드, 리더암과 같이 씀):
+#   g      바퀴 잠금/해제 토글 — **시작은 잠김 상태**입니다. 한 번 눌러야 움직입니다.
+#   w/s    앞/뒤     a/d  좌/우 평행이동     z/x  좌/우 회전
+#   c/v    속도 올림/내림
+#
+# 녹화되는 액션 (15차원) — 바퀴가 들어가야 정책이 주행까지 배웁니다:
+#   left_*.pos (6) + right_*.pos (6) + x.vel, y.vel, theta.vel (3)
+#
+# 로봇 클래스는 우리가 lerobot 0.6 에 직접 붙인 것입니다 (vendor/README.md).
+#   PC   --robot.type=bi_so_base_client   --teleop.type=bi_so_base_leader
+#   파이  bi_so_base_host (bi_so_base_follower)
+#
 # ※ 카메라는 이제 여기 안 적습니다. config/cameras.<이름>.yaml 에만 있고
 #   추론(src/arm_node.py)도 같은 파일을 읽습니다. 그래서 "녹화 때와 추론 때
 #   카메라 이름이 달라서 팔이 안 움직이는" 문제가 구조적으로 안 생깁니다.
@@ -45,15 +60,21 @@ CAMERA_SET="${CAMERA_SET:-3cam}"
 # 데이터셋 이름에 카메라 구성을 붙여서 섞이지 않게 합니다.
 REPO_ID="${REPO_ID:-$HF_USER/xlerobot-dice-$CAMERA_SET}"
 
-# 팔로워 팔 (로봇에 붙어 실제로 움직이는 쪽)
-FOLLOWER_LEFT_PORT="/dev/ttyACM0"
-FOLLOWER_RIGHT_PORT="/dev/ttyACM1"
-FOLLOWER_ID="home_bi"
+# 라즈베리파이 (bi_so_base_host 가 떠 있는 쪽). IP 로 줘도 됩니다.
+PI_HOST="${PI_HOST:-xlerobot2.local}"
+ROBOT_TYPE="bi_so_base_client"
+ROBOT_ID="bi_so101"
 
-# 리더 팔 (사람이 손으로 잡고 조종하는 쪽)
-LEADER_LEFT_PORT="/dev/ttyACM2"
-LEADER_RIGHT_PORT="/dev/ttyACM3"
-LEADER_ID="home_bi_leader"
+# 리더 팔 (PC 에 USB 로 꽂음, udev 심볼릭 링크)
+LEADER_LEFT_PORT="/dev/so101_leader_left"
+LEADER_RIGHT_PORT="/dev/so101_leader_right"
+# 캘리브레이션 파일 이름이 여기서 나옵니다: <ID>_left.json / <ID>_right.json
+# (~/.cache/huggingface/lerobot/calibration/teleoperators/so_leader/)
+# 바꾸면 캘리브레이션을 다시 하라고 나옵니다.
+LEADER_ID="bi_so101_leader"
+
+# 바퀴 키. 실제로 쓰던 배치 그대로입니다 (기본값의 q/e 회전 대신 z/x).
+TELEOP_KEYS='{"forward":"w","backward":"s","left":"a","right":"d","rotate_left":"z","rotate_right":"x","speed_up":"c","speed_down":"v","quit":"t"}'
 
 EPISODE_TIME_S=25      # 에피소드 하나 최대 길이(초)
 RESET_TIME_S=15        # 다음 에피소드 전 준비 시간(초)
@@ -61,16 +82,20 @@ RESET_TIME_S=15        # 다음 에피소드 전 준비 시간(초)
 
 CAM_TOOL="$PROJECT_ROOT/src/camera_config.py"
 
-# 카메라 설정을 읽습니다. 장치가 없으면 여기서 멈춥니다 — 40개를 찍고 나서
-# 한 카메라가 검은 화면이었다는 걸 알면 그 세션은 전부 버려야 합니다.
-if ! python3 "$CAM_TOOL" "$CAMERA_SET" --check >/dev/null; then
+# 카메라 설정을 읽습니다. 장치는 **파이에** 있으므로 여기서는 장치 확인을
+# 하지 않습니다 — host.sh 가 파이에서 --check 로 확인합니다. 여기서는 구성
+# 파일이 제대로 읽히는지만 봅니다.
+if ! python3 "$CAM_TOOL" "$CAMERA_SET" >/dev/null; then
   echo "카메라 구성 '$CAMERA_SET' 을 쓸 수 없습니다. 위 메시지를 보세요." >&2
   exit 1
 fi
 
 CAM_SUMMARY="$(python3 "$CAM_TOOL" "$CAMERA_SET" --table)"
 CAM_FPS="$(python3 "$CAM_TOOL" "$CAMERA_SET" --fps)"
-mapfile -t CAM_ARGS < <(python3 "$CAM_TOOL" "$CAMERA_SET" --record-args)
+# 클라이언트는 카메라를 열지 않고, 파이가 보낸 프레임을 이 이름으로 받습니다.
+# 그래서 최종 이름(top, left_wrist ...)을 그대로 넘기는 flat 레이아웃입니다.
+# 파이(host.sh)도 같은 yaml 을 읽으므로 이름이 어긋나지 않습니다.
+mapfile -t CAM_ARGS < <(python3 "$CAM_TOOL" "$CAMERA_SET" --record-args --robot-type="$ROBOT_TYPE")
 
 # 라벨 키 -> 실제 학습 라벨 문자열
 # ※ config/tasks.yaml 의 prompt 와 **글자까지 동일**해야 합니다.
@@ -128,11 +153,13 @@ cat <<EOF
   에피소드  : $EPISODES 개   (이어붙이기: $RESUME)
   자리      : $(desk_for "$KEY")
 
+  파이      : $PI_HOST   (host.sh 를 같은 CAMERA_SET 으로 띄웠나요?)
   카메라 구성: $CAMERA_SET   (fps $CAM_FPS)
 $CAM_SUMMARY
 ==================================================================
 
   → 다음으로   ← 다시 찍기   ESC 중지
+  g 바퀴 잠금 해제/잠금   w/s/a/d 이동   z/x 회전   c/v 속도
 
   · 파킹 자세에서 시작해서 파킹 자세로 끝내세요
   · 지시문과 다른 색을 집었으면 반드시 ← 로 다시
@@ -144,25 +171,23 @@ read -r -p "위 내용이 맞으면 Enter, 아니면 Ctrl+C: " _
 
 # ------------------------------ 녹화 실행 -------------------------------------
 lerobot-record \
-  --robot.type=bi_so_follower \
-  --robot.id="$FOLLOWER_ID" \
-  --robot.left_arm_config.port="$FOLLOWER_LEFT_PORT" \
-  --robot.left_arm_config.id="${FOLLOWER_ID}_left" \
-  --robot.right_arm_config.port="$FOLLOWER_RIGHT_PORT" \
-  --robot.right_arm_config.id="${FOLLOWER_ID}_right" \
+  --robot.type="$ROBOT_TYPE" \
+  --robot.remote_ip="$PI_HOST" \
+  --robot.id="$ROBOT_ID" \
   "${CAM_ARGS[@]}" \
-  --teleop.type=bi_so_leader \
+  --teleop.type=bi_so_base_leader \
   --teleop.id="$LEADER_ID" \
   --teleop.left_arm_config.port="$LEADER_LEFT_PORT" \
-  --teleop.left_arm_config.id="${LEADER_ID}_left" \
   --teleop.right_arm_config.port="$LEADER_RIGHT_PORT" \
-  --teleop.right_arm_config.id="${LEADER_ID}_right" \
+  --teleop.teleop_keys="$TELEOP_KEYS" \
   --dataset.repo_id="$REPO_ID" \
   --dataset.single_task="$TASK" \
   --dataset.num_episodes="$EPISODES" \
   --dataset.episode_time_s="$EPISODE_TIME_S" \
   --dataset.reset_time_s="$RESET_TIME_S" \
   --dataset.fps="$CAM_FPS" \
+  --dataset.streaming_encoding=true \
+  --dataset.encoder_threads=4 \
   --resume="$RESUME" \
   --display_data=true
 

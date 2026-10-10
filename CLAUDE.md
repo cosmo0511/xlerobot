@@ -45,128 +45,79 @@ action chunk 방식(한 번에 50스텝 받아오기)이 여기서 필수입니�
 /home/user/lerobot-venv-0.6/     ← 가상환경
 ```
 
-### 무엇을 고쳤나 (15 files, +249 / -21)
+### 무엇을 고쳤나 — 이제 레포에 있습니다: `vendor/lerobot-0.6.patch`
 
-새로 만든 파일:
+v0.6.0 기준 35 files, +2471 / -21 (기존 파일 15개 수정 + **새 파일 20개**).
+예전에 적어둔 "+249" 는 `git diff --stat` 이 새 파일을 안 세서 나온 숫자였습니다.
+설치·갱신 방법과 파일 목록은 **`vendor/README.md`** 에 있습니다.
+깨끗한 v0.6.0 에 적용하면 원본 PC 의 `src/` 와 똑같아지는 것까지 확인했습니다.
+
+### 코드에서 확인한 것 (예전 "아직 모르는 것")
+
+**등록된 타입 이름** (`config_bi_so_follower.py`, `config_bi_so_leader.py`)
+
+| 타입 | 종류 | 실행 위치 |
+|---|---|---|
+| `bi_so_base_follower` | 로봇 — 양팔 + 바퀴를 USB 로 직접 엶 | 파이 (호스트가 내부에서 사용) |
+| `bi_so_base_client` | 로봇 — ZMQ 로 파이에 붙음, `remote_ip` 필요 | **PC (녹화)** |
+| `bi_so_base_leader` | 텔레옵 — 리더암 2개 + 키보드 | **PC (녹화)** |
+| `bi_so_client` | 로봇 — 바퀴 없는 양팔 클라이언트 | (안 씀) |
+
+호스트는 등록 타입이 아니라 모듈입니다:
+`python -m lerobot.robots.bi_so_follower.bi_so_base_host` → `scripts/host.sh`
+
+**바퀴** (`bi_so_base_follower.py`)
+- 모터: `base_left_wheel`(7) / `base_back_wheel`(8) / `base_right_wheel`(9), `sts3215`,
+  **오른팔 버스에 추가**. 속도 모드. LeKiwi 와 같은 3옴니휠 기구학(240/0/120°).
+- 액션·관측 키: `x.vel` (m/s, 앞 +), `y.vel` (m/s, 왼쪽 +), `theta.vel` (deg/s, 반시계 +)
+- 전체 액션 **15차원**: `left_{shoulder_pan,shoulder_lift,elbow_flex,wrist_flex,wrist_roll,gripper}.pos`
+  + `right_...pos` (6) + `x.vel, y.vel, theta.vel`
+  (상류 xlerobot 의 `left_arm_` 접두사가 **아님** — `left_` / `right_`)
+
+**리더암 + 키보드 합치기** — `lerobot_record.py` 는 import 만 추가됐고, 상류의
+멀티 텔레옵 경로(`isinstance(teleop, list)`, lekiwi 게이트)는 **아예 안 탑니다.**
+`bi_so_base_leader` 가 `BiSOLeader` + `KeyboardTeleop` 을 감싸서 **텔레옵 하나**로
+15차원 액션을 냅니다. 그래서 예전에 적어둔 "멀티 텔레옵 제약 3개" 는 해당 없습니다.
+- 바퀴는 **잠긴 상태로 시작**합니다. `g` 를 눌러야 움직입니다 (키보드 리스너가
+  전역이라 다른 창에서 친 wasd 로 로봇이 움직이는 걸 막으려고).
+- 실제로 쓰던 키: w/s/a/d 이동, **z/x 회전, c/v 속도**, t 종료 (`record.sh` 에 고정).
+
+### 녹화 경로 (확정)
 
 ```
-src/lerobot/robots/bi_so_follower/bi_so_host.py        라즈베리파이 쪽 호스트
-src/lerobot/robots/bi_so_follower/bi_so_client.py      PC 쪽 클라이언트
-src/lerobot/robots/bi_so_follower/bi_so_base_host.py   베이스(바퀴) 호스트
-src/lerobot/teleoperators/bi_so_leader/bi_so_base_leader.py
-src/lerobot/robots/so102_follower/                     SO-102 팔
-src/lerobot/teleoperators/so102_leader/
-src/lerobot/teleoperators/bi_so102_leader/
+🍓 파이:  ./scripts/host.sh      bi_so_base_host — 팔·바퀴·카메라를 엶, ZMQ 5555/5556
+💻 PC  :  ./scripts/record.sh    bi_so_base_client + bi_so_base_leader
 ```
 
-고친 파일 중 큰 것:
-
-```
-robots/bi_so_follower/config_bi_so_follower.py   +123   ← 바퀴·설정이 여기
-teleoperators/bi_so_leader/config_bi_so_leader.py +34
-robots/bi_so_follower/__init__.py                 +25
-robots/utils.py                                   +24
-robots/__init__.py                                +20
-teleoperators/utils.py                            +12
-scripts/lerobot_record.py                          +4   ← 아주 작음(등록/임포트 수준)
-scripts/lerobot_teleoperate.py, lerobot_calibrate.py,
-lerobot_rollout.py, lerobot_replay.py,
-lerobot_setup_motors.py, lerobot_find_joint_limits.py   각 +2~4
-```
-
-### 🔴 이 수정분이 그 PC 한 대에만 있습니다
-
-레포에 없습니다. 팀원이 clone 해도 안 따라오고, `pip install -U` 한 번에
-날아갑니다. **지금 프로젝트에서 제일 큰 단일 리스크입니다.**
-
-패치로 묶어서 레포에 넣는 방법 (새 파일까지 포함):
-
-```bash
-cd /home/user/lerobot_0.6
-git add -N .                               # 새 파일도 diff 에 포함
-git diff > /tmp/lerobot-0.6-xlerobot.patch
-git reset                                  # 스테이징만 되돌림
-```
-
-### 아직 모르는 것 (코드를 봐야 정해짐)
-
-- `config_bi_so_follower.py` 에 **등록된 로봇 타입 이름**
-  (`@RobotConfig.register_subclass("...")`) — `record.sh` 의 `--robot.type` 값
-- 바퀴 모터 정의와 **액션 키 이름** — 녹화에 바퀴가 들어가는지가 여기서 갈립니다
-- 리더암 + 키보드를 녹화에서 어떻게 합치는지
-  (`lerobot_record.py` 가 4줄만 바뀐 걸 보면 이미 다른 데서 처리된 듯)
-
-### 카메라는 어느 쪽이든 준비돼 있습니다
-
-`bi_so_follower` 계열이면 현재 기본값인 `per_arm` 레이아웃이 맞습니다.
-다른 형태가 필요하면 `--robot-type=` 으로 전환됩니다. 최종 관측 키는
-두 레이아웃에서 똑같습니다.
+- `remote_ip` 기본값 `xlerobot2.local` (`PI_HOST=` 로 변경). 실제 쓰던 명령에서 가져옴.
+- 리더: `/dev/so101_leader_{left,right}`, id `bi_so101_leader`
+  (캘리브레이션 `bi_so101_leader_{left,right}.json` 이 PC 에 있음 — id 를 바꾸면 재캘리브레이션).
+- 카메라: 둘 다 `config/cameras.<CAMERA_SET>.yaml` 을 읽습니다. 파이는 `per_arm`
+  (장치를 엶, `--check` 도 파이에서), PC 클라이언트는 `flat` (같은 최종 이름으로 프레임만 받음).
+  **두 쪽 `CAMERA_SET` 이 같아야 합니다.**
 
 ## 아직 안 정해진 것 / 확인 필요
 
-- **4cam 이 실제로 돌아가는지** — 카메라 4개를 동시에 열 수 있는지 확인 필요.
-- **지금 돌아가는 녹화 설정이 레포에 없습니다.** 가상환경(site-packages) 안의
-  파일을 고쳐서 쓰고 있습니다 (카메라 3개 버전). 아래 "가장 급한 것" 참고.
-- **`record.sh` 를 `xlerobot_client` 로 바꾸는 작업** — 위 표의 항목들을 같이 고쳐야 합니다.
+- **4cam 이 실제로 돌아가는지** — 카메라 4개를 동시에 열 수 있는지 + 무선 대역폭
+  (`bi_so_base_host.py` 주석: JPEG 70 에서 카메라당 ~12 Mbps).
+- **파이 쪽 카메라 장치 경로** — yaml 은 `/dev/video0/2/4` 인데, PC 에 남은 예전 명령은
+  `/dev/cam_top`, `/dev/cam_wrist_left`, `/dev/cam_wrist_right` (udev 이름) 을 썼습니다.
+  파이에서 `python src/camera_config.py 3cam --check` 로 확인하고 yaml 을 맞추세요.
+  (예전 명령의 카메라 **이름**도 `cam_top` 등이었지만, 우리 데이터는 아직 없으니
+  yaml 의 `top / left_wrist / right_wrist` 로 통일했습니다.)
+- **파이의 팔로워 포트와 id** — 이 PC 에서 확인 불가. `host.sh` 는 기본값 없이 env 로 받습니다.
+- **추론 쪽(`src/arm_node.py`, `config/robot.yaml`)은 아직 옛 구조**입니다
+  (Pi-A/Pi-B, `bi_so_follower`, 팔 12차원). 정책은 15차원 액션으로 학습되므로
+  추론도 `bi_so_base_client` 로 바꿔야 바퀴 출력까지 로봇에 갑니다. 다음 작업.
 
-## 텔레옵 구성 (확인됨)
+## 환경: lerobot 0.6 (venv)
 
-- **방식 (B)**: 리더암으로 양팔 + **키보드로 바퀴**.
-- 라즈베리파이에서 `xlerobot_host` 를 띄우고 PC 가 붙습니다.
-  → 녹화 쪽 로봇 타입은 `xlerobot` 이 아니라 **`xlerobot_client`** 이고
-    `remote_ip` (파이의 IP) 가 필요합니다. ZMQ 포트 5555(명령) / 5556(관측).
-
-## 🔴 가장 급한 것 — 녹화 설정이 레포 밖에 있습니다
-
-지금 돌아가는 3카메라 녹화 설정은 **가상환경 안의 파일을 직접 고친 것**입니다.
-이건 두 가지로 위험합니다:
-
-1. **팀원이 볼 수 없습니다.** 레포를 clone 해도 그 수정은 안 따라옵니다.
-2. **`pip install -U` 한 번에 날아갑니다.** 재현도 안 됩니다.
-
-마감 2주에 이게 제일 큰 리스크입니다. 그 파일을 레포 안으로 옮기는 게
-다음 작업입니다.
-
-### 왜 단순 복사가 아닌가 — 상류 `record.py` 의 멀티 텔레옵 제약 3개
-
-리더암 + 키보드를 같이 쓰는 경로(`record_loop` 의 `isinstance(teleop, list)` 분기)에
-`xlerobot` 과 안 맞는 데가 세 군데 있습니다:
-
-```python
-# 1. 로봇 이름 게이트 — xlerobot_client 는 통과 못 함
-if not (... and robot.name == "lekiwi_client"):
-    raise ValueError("... Currently only supported for LeKiwi robot.")
-
-# 2. 리더암 클래스 목록 — 양팔 리더는 여기 없음
-teleop_arm = next((t for t in teleop if isinstance(
-    t, (so100_leader.SO100Leader, so101_leader.SO101Leader,
-        koch_leader.KochLeader))), None)
-
-# 3. 액션 키 접두사 — LeKiwi(팔 1개) 기준
-arm_action = {f"arm_{k}": v for k, v in arm_action.items()}
-#   LeKiwi    : arm_shoulder_pan.pos
-#   xlerobot  : left_arm_shoulder_pan.pos / right_arm_shoulder_pan.pos
-#   -> 그냥 쓰면 키가 안 맞습니다
-```
-
-지금 설정이 3카메라로 **돌아가고 있다**는 건 이 세 개를 이미 어떤 식으로든
-해결했다는 뜻입니다. 그래서 새로 쓰지 말고 **그 파일을 가져와서 레포에 넣어야**
-합니다.
-
-### 환경: lerobot 0.6 (venv)
-
-돌아가는 설정은 **lerobot 0.6** 가상환경 안에 있습니다. 임포트 경로와 CLI 플래그가
-버전마다 바뀌므로, 코드를 맞출 때는 이 버전 기준으로 맞춰야 합니다.
-
-### 참고: 상류는 포크된 lerobot 을 전제합니다
-
-`software/src/record.py` 가 `from lerobot.robots import xlerobot` 로 임포트합니다.
-플러그인 설치 방식(`register_third_party_plugins`)과 섞여 있어서, 어느 쪽으로
-설치돼 있는지에 따라 임포트 경로가 다릅니다. 실제 환경 기준으로 맞춰야 합니다.
+PC 는 `/home/user/lerobot-venv-0.6` + editable `/home/user/lerobot_0.6`.
+임포트 경로와 CLI 플래그가 버전마다 바뀌므로 이 버전 기준으로 맞춥니다.
 
 ## 팀 작업 규칙
 
-- **카메라 장치 경로를 `scripts/record.sh` 에 다시 적지 마세요.**
+- **카메라 장치 경로를 `scripts/record.sh` / `scripts/host.sh` 에 다시 적지 마세요.**
   `config/cameras.*.yaml` 에만 있고, 녹화(`record.sh`)와 추론(`arm_node.py`)이
   같은 파일을 읽습니다. 어긋나면 팔이 아예 안 움직입니다. `tests_smoke.py` 가 막습니다.
 - 카메라 구성이 다르면 데이터셋도 분리됩니다 (`xlerobot-dice-3cam` / `-4cam`).

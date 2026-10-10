@@ -1,0 +1,2915 @@
+diff --git a/src/lerobot/robots/__init__.py b/src/lerobot/robots/__init__.py
+index eb8b06f..20f2ee3 100644
+--- a/src/lerobot/robots/__init__.py
++++ b/src/lerobot/robots/__init__.py
+@@ -1,21 +1,7 @@
+-#!/usr/bin/env python
+-
+-# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#     http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-
+ from .config import RobotConfig
+ from .robot import Robot
+ from .utils import make_robot_from_config
++from . import so102_follower
++from . import bi_so102_follower
+ 
+-__all__ = ["Robot", "RobotConfig", "make_robot_from_config"]
++__all__ = ["Robot", "RobotConfig", "make_robot_from_config"]
+\ No newline at end of file
+diff --git a/src/lerobot/robots/bi_so102_follower/__init__.py b/src/lerobot/robots/bi_so102_follower/__init__.py
+new file mode 100644
+index 0000000..0f9f31f
+--- /dev/null
++++ b/src/lerobot/robots/bi_so102_follower/__init__.py
+@@ -0,0 +1,11 @@
++from .bi_so102_client import BiSO102Client
++from .bi_so102_follower import BiSO102Follower
++from .config_bi_so102_follower import BiSO102ClientConfig, BiSO102FollowerConfig, BiSO102HostConfig
++
++__all__ = [
++    "BiSO102Client",
++    "BiSO102ClientConfig",
++    "BiSO102Follower",
++    "BiSO102FollowerConfig",
++    "BiSO102HostConfig",
++]
+diff --git a/src/lerobot/robots/bi_so102_follower/bi_so102_client.py b/src/lerobot/robots/bi_so102_follower/bi_so102_client.py
+new file mode 100644
+index 0000000..497d4bf
+--- /dev/null
++++ b/src/lerobot/robots/bi_so102_follower/bi_so102_client.py
+@@ -0,0 +1,176 @@
++import base64
++import json
++import logging
++from functools import cached_property
++
++import cv2
++import numpy as np
++
++from lerobot.types import RobotAction, RobotObservation
++from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
++from lerobot.utils.errors import DeviceNotConnectedError
++
++from ..robot import Robot
++from .config_bi_so102_follower import BiSO102ClientConfig
++
++SO102_JOINTS = (
++    "shoulder_pan",
++    "shoulder_lift",
++    "elbow_flex",
++    "wrist_flex",
++    "wrist_yaw",
++    "wrist_roll",
++    "gripper",
++)
++
++
++class BiSO102Client(Robot):
++    config_class = BiSO102ClientConfig
++    name = "bi_so102_client"
++
++    def __init__(self, config: BiSO102ClientConfig):
++        import zmq
++
++        self._zmq = zmq
++        super().__init__(config)
++        self.config = config
++
++        self.remote_ip = config.remote_ip
++        self.port_zmq_cmd = config.port_zmq_cmd
++        self.port_zmq_observations = config.port_zmq_observations
++        self.polling_timeout_ms = config.polling_timeout_ms
++        self.connect_timeout_s = config.connect_timeout_s
++
++        self.zmq_context = None
++        self.zmq_cmd_socket = None
++        self.zmq_observation_socket = None
++
++        self.last_frames: dict[str, np.ndarray] = {}
++        self.last_state: dict[str, float] = {}
++        self._is_connected = False
++        self.cameras = dict(config.cameras)
++        
++
++    @cached_property
++    def _state_ft(self) -> dict[str, type]:
++        keys = [f"{side}_{joint}.pos" for side in ("left", "right") for joint in SO102_JOINTS]
++        return dict.fromkeys(keys, float)
++
++    @cached_property
++    def _cameras_ft(self) -> dict[str, tuple[int, int, int]]:
++        return {name: (cfg.height, cfg.width, 3) for name, cfg in self.config.cameras.items()}
++
++    @cached_property
++    def observation_features(self) -> dict[str, type | tuple]:
++        return {**self._state_ft, **self._cameras_ft}
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        return self._state_ft
++
++    @property
++    def is_connected(self) -> bool:
++        return self._is_connected
++
++    @property
++    def is_calibrated(self) -> bool:
++        return True
++
++    def calibrate(self) -> None:
++        pass
++
++    def configure(self) -> None:
++        pass
++
++    @check_if_already_connected
++    def connect(self, calibrate: bool = True) -> None:
++        zmq = self._zmq
++        self.zmq_context = zmq.Context()
++        self.zmq_cmd_socket = self.zmq_context.socket(zmq.PUSH)
++        self.zmq_cmd_socket.connect(f"tcp://{self.remote_ip}:{self.port_zmq_cmd}")
++        self.zmq_cmd_socket.setsockopt(zmq.CONFLATE, 1)
++
++        self.zmq_observation_socket = self.zmq_context.socket(zmq.PULL)
++        self.zmq_observation_socket.connect(f"tcp://{self.remote_ip}:{self.port_zmq_observations}")
++        self.zmq_observation_socket.setsockopt(zmq.CONFLATE, 1)
++
++        poller = zmq.Poller()
++        poller.register(self.zmq_observation_socket, zmq.POLLIN)
++        socks = dict(poller.poll(self.connect_timeout_s * 1000))
++        if self.zmq_observation_socket not in socks or socks[self.zmq_observation_socket] != zmq.POLLIN:
++            raise DeviceNotConnectedError(
++                f"Timeout waiting for BiSO102 host at {self.remote_ip}. Is the host running on the Raspberry Pi?"
++            )
++
++        self._is_connected = True
++        logging.info(f"{self} connected to host {self.remote_ip}.")
++
++    def _poll_latest_message(self) -> str | None:
++        zmq = self._zmq
++        poller = zmq.Poller()
++        poller.register(self.zmq_observation_socket, zmq.POLLIN)
++        try:
++            socks = dict(poller.poll(self.polling_timeout_ms))
++        except zmq.ZMQError as e:
++            logging.error(f"ZMQ polling error: {e}")
++            return None
++        if self.zmq_observation_socket not in socks:
++            return None
++
++        last_msg = None
++        while True:
++            try:
++                last_msg = self.zmq_observation_socket.recv_string(zmq.NOBLOCK)
++            except zmq.Again:
++                break
++        return last_msg
++
++    @staticmethod
++    def _decode_image(image_b64: str) -> np.ndarray | None:
++        if not image_b64:
++            return None
++        try:
++            jpg = base64.b64decode(image_b64)
++            return cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
++        except (TypeError, ValueError) as e:
++            logging.error(f"Error decoding image: {e}")
++            return None
++
++    @check_if_not_connected
++    def get_observation(self) -> RobotObservation:
++        msg = self._poll_latest_message()
++        if msg is not None:
++            try:
++                observation = json.loads(msg)
++            except json.JSONDecodeError as e:
++                logging.error(f"Error decoding observation: {e}")
++                observation = None
++            if observation is not None:
++                self.last_state = {key: float(observation.get(key, 0.0)) for key in self._state_ft}
++                for cam_name in self._cameras_ft:
++                    frame = self._decode_image(observation.get(cam_name, ""))
++                    if frame is not None:
++                        self.last_frames[cam_name] = frame
++
++        obs_dict: RobotObservation = dict(self.last_state)
++        for cam_name, (height, width, _) in self._cameras_ft.items():
++            frame = self.last_frames.get(cam_name)
++            if frame is None:
++                logging.warning(f"No frame for camera {cam_name} yet")
++                frame = np.zeros((height, width, 3), dtype=np.uint8)
++            obs_dict[cam_name] = frame
++        return obs_dict
++
++    @check_if_not_connected
++    def send_action(self, action: RobotAction) -> RobotAction:
++        action_sent = {key: float(action[key]) for key in self._state_ft if key in action}
++        self.zmq_cmd_socket.send_string(json.dumps(action_sent))
++        return action_sent
++
++    @check_if_not_connected
++    def disconnect(self):
++        self.zmq_observation_socket.close()
++        self.zmq_cmd_socket.close()
++        self.zmq_context.term()
++        self._is_connected = False
++        logging.info(f"{self} disconnected.")
+diff --git a/src/lerobot/robots/bi_so102_follower/bi_so102_follower.py b/src/lerobot/robots/bi_so102_follower/bi_so102_follower.py
+new file mode 100644
+index 0000000..ce59ac9
+--- /dev/null
++++ b/src/lerobot/robots/bi_so102_follower/bi_so102_follower.py
+@@ -0,0 +1,116 @@
++import logging
++from functools import cached_property
++
++from lerobot.types import RobotAction, RobotObservation
++from lerobot.utils.bimanual import BimanualMixin
++from lerobot.utils.decorators import check_if_not_connected
++
++from ..robot import Robot
++from ..so102_follower import SO102Follower, SO102FollowerRobotConfig
++from .config_bi_so102_follower import BiSO102FollowerConfig
++
++logger = logging.getLogger(__name__)
++
++
++class BiSO102Follower(BimanualMixin, Robot):
++    config_class = BiSO102FollowerConfig
++    name = "bi_so102_follower"
++
++    def __init__(self, config: BiSO102FollowerConfig):
++        super().__init__(config)
++        self.config = config
++
++        self._top_level_cam_keys = set(config.cameras)
++        _collisions = self._top_level_cam_keys & set(
++            config.left_arm_config.cameras
++        ) | self._top_level_cam_keys & set(config.right_arm_config.cameras)
++        if _collisions:
++            raise ValueError(
++                f"Top-level camera names collide with per-arm camera names: {sorted(_collisions)}"
++            )
++        left_arm_cameras = {**config.left_arm_config.cameras, **config.cameras}
++
++        left_arm_config = SO102FollowerRobotConfig(
++            id=f"{config.id}_left" if config.id else None,
++            calibration_dir=config.calibration_dir,
++            port=config.left_arm_config.port,
++            disable_torque_on_disconnect=config.left_arm_config.disable_torque_on_disconnect,
++            max_relative_target=config.left_arm_config.max_relative_target,
++            use_degrees=config.left_arm_config.use_degrees,
++            cameras=left_arm_cameras,
++        )
++
++        right_arm_config = SO102FollowerRobotConfig(
++            id=f"{config.id}_right" if config.id else None,
++            calibration_dir=config.calibration_dir,
++            port=config.right_arm_config.port,
++            disable_torque_on_disconnect=config.right_arm_config.disable_torque_on_disconnect,
++            max_relative_target=config.right_arm_config.max_relative_target,
++            use_degrees=config.right_arm_config.use_degrees,
++            cameras=config.right_arm_config.cameras,
++        )
++
++        self.left_arm = SO102Follower(left_arm_config)
++        self.right_arm = SO102Follower(right_arm_config)
++
++        self.cameras = {**self.left_arm.cameras, **self.right_arm.cameras}
++
++    @property
++    def _motors_ft(self) -> dict[str, type]:
++        left_arm_motors_ft = self.left_arm._motors_ft
++        right_arm_motors_ft = self.right_arm._motors_ft
++
++        return {
++            **{f"left_{k}": v for k, v in left_arm_motors_ft.items()},
++            **{f"right_{k}": v for k, v in right_arm_motors_ft.items()},
++        }
++
++    @property
++    def _cameras_ft(self) -> dict[str, tuple]:
++        out: dict[str, tuple] = {}
++        for k, v in self.left_arm._cameras_ft.items():
++            out[k if k in self._top_level_cam_keys else f"left_{k}"] = v
++        for k, v in self.right_arm._cameras_ft.items():
++            out[f"right_{k}"] = v
++        return out
++
++    @cached_property
++    def observation_features(self) -> dict[str, type | tuple]:
++        return {**self._motors_ft, **self._cameras_ft}
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        return self._motors_ft
++
++    def setup_motors(self) -> None:
++        self.left_arm.setup_motors()
++        self.right_arm.setup_motors()
++
++    @check_if_not_connected
++    def get_observation(self) -> RobotObservation:
++        obs_dict: RobotObservation = {}
++
++        for key, value in self.left_arm.get_observation().items():
++            obs_dict[key if key in self._top_level_cam_keys else f"left_{key}"] = value
++
++        for key, value in self.right_arm.get_observation().items():
++            obs_dict[f"right_{key}"] = value
++
++        return obs_dict
++
++    @check_if_not_connected
++    def send_action(self, action: RobotAction) -> RobotAction:
++        left_action = {
++            key.removeprefix("left_"): value for key, value in action.items() if key.startswith("left_")
++        }
++        right_action = {
++            key.removeprefix("right_"): value for key, value in action.items() if key.startswith("right_")
++        }
++
++        sent_action_left = self.left_arm.send_action(left_action)
++        sent_action_right = self.right_arm.send_action(right_action)
++
++        prefixed_sent_action_left = {f"left_{key}": value for key, value in sent_action_left.items()}
++        prefixed_sent_action_right = {f"right_{key}": value for key, value in sent_action_right.items()}
++
++        return {**prefixed_sent_action_left, **prefixed_sent_action_right}
+diff --git a/src/lerobot/robots/bi_so102_follower/bi_so102_host.py b/src/lerobot/robots/bi_so102_follower/bi_so102_host.py
+new file mode 100644
+index 0000000..d89d1cb
+--- /dev/null
++++ b/src/lerobot/robots/bi_so102_follower/bi_so102_host.py
+@@ -0,0 +1,146 @@
++import base64
++import json
++import logging
++import time
++from dataclasses import dataclass, field
++from typing import Final
++
++import cv2
++import draccus
++import numpy as np
++import zmq
++
++from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401
++from lerobot.utils.utils import init_logging
++
++from .bi_so102_follower import BiSO102Follower
++from .config_bi_so102_follower import BiSO102FollowerConfig, BiSO102HostConfig
++
++MAX_CONSECUTIVE_READ_FAILURES: Final = 5
++
++
++@dataclass
++class BiSO102ServerConfig:
++    robot: BiSO102FollowerConfig
++    host: BiSO102HostConfig = field(default_factory=BiSO102HostConfig)
++
++
++class BiSO102Host:
++    def __init__(self, config: BiSO102HostConfig):
++        self.zmq_context = zmq.Context()
++        self.zmq_cmd_socket = self.zmq_context.socket(zmq.PULL)
++        self.zmq_cmd_socket.setsockopt(zmq.CONFLATE, 1)
++        self.zmq_cmd_socket.bind(f"tcp://*:{config.port_zmq_cmd}")
++
++        self.zmq_observation_socket = self.zmq_context.socket(zmq.PUSH)
++        self.zmq_observation_socket.setsockopt(zmq.CONFLATE, 1)
++        self.zmq_observation_socket.bind(f"tcp://*:{config.port_zmq_observations}")
++
++        self.connection_time_s = config.connection_time_s
++        self.watchdog_timeout_ms = config.watchdog_timeout_ms
++        self.max_loop_freq_hz = config.max_loop_freq_hz
++
++    def disconnect(self):
++        self.zmq_observation_socket.close()
++        self.zmq_cmd_socket.close()
++        self.zmq_context.term()
++
++
++def _encode_observation(observation: dict) -> dict:
++    encoded = {}
++    for key, value in observation.items():
++        if isinstance(value, np.ndarray):
++            ret, buffer = cv2.imencode(".jpg", value, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
++            encoded[key] = base64.b64encode(buffer).decode("utf-8") if ret else ""
++        else:
++            encoded[key] = float(value)
++    return encoded
++
++
++@draccus.wrap()
++def main(cfg: BiSO102ServerConfig):
++    init_logging()
++    logging.info("Configuring BiSO102Follower")
++    robot = BiSO102Follower(cfg.robot)
++
++    logging.info("Connecting BiSO102Follower")
++    robot.connect()
++
++    logging.info("Starting host")
++    host = BiSO102Host(cfg.host)
++
++    last_cmd_time = time.time()
++    watchdog_active = False
++    client_connected = True
++    consecutive_read_failures = 0
++    logging.info("Waiting for commands...")
++    try:
++        start = time.perf_counter()
++        duration = 0
++        while host.connection_time_s <= 0 or duration < host.connection_time_s:
++            loop_start_time = time.time()
++            try:
++                msg = host.zmq_cmd_socket.recv_string(zmq.NOBLOCK)
++                data = dict(json.loads(msg))
++                robot.send_action(data)
++                last_cmd_time = time.time()
++                watchdog_active = False
++            except zmq.Again:
++                pass
++            except Exception as e:
++                logging.error("Message fetching failed: %s", e)
++
++            now = time.time()
++            if (now - last_cmd_time > host.watchdog_timeout_ms / 1000) and not watchdog_active:
++                logging.warning(
++                    f"Command not received for more than {host.watchdog_timeout_ms} milliseconds. Holding position."
++                )
++                watchdog_active = True
++
++            last_observation = None
++            try:
++                last_observation = _encode_observation(robot.get_observation())
++                consecutive_read_failures = 0
++            except ConnectionError as e:
++                consecutive_read_failures += 1
++                logging.warning(
++                    "Observation read failed (%d/%d), skipping this cycle: %s",
++                    consecutive_read_failures,
++                    MAX_CONSECUTIVE_READ_FAILURES,
++                    e,
++                )
++                if consecutive_read_failures >= MAX_CONSECUTIVE_READ_FAILURES:
++                    logging.error(
++                        "Observation read failed %d times in a row. Stopping host.",
++                        consecutive_read_failures,
++                    )
++                    raise
++
++            if last_observation is not None:
++                try:
++                    host.zmq_observation_socket.send_string(json.dumps(last_observation), flags=zmq.NOBLOCK)
++                    if not client_connected:
++                        logging.info("Client connected, sending observations")
++                        client_connected = True
++                except zmq.Again:
++                    if client_connected:
++                        logging.warning("No client connected, observations are dropped until one connects")
++                        client_connected = False
++
++            elapsed = time.time() - loop_start_time
++            time.sleep(max(1 / host.max_loop_freq_hz - elapsed, 0))
++            duration = time.perf_counter() - start
++        print("Cycle time reached.")
++
++    except KeyboardInterrupt:
++        print("Keyboard interrupt received. Exiting...")
++    finally:
++        print("Shutting down BiSO102 host.")
++        robot.disconnect()
++        host.disconnect()
++
++    logging.info("Finished BiSO102 host cleanly")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/lerobot/robots/bi_so102_follower/config_bi_so102_follower.py b/src/lerobot/robots/bi_so102_follower/config_bi_so102_follower.py
+new file mode 100644
+index 0000000..15f2378
+--- /dev/null
++++ b/src/lerobot/robots/bi_so102_follower/config_bi_so102_follower.py
+@@ -0,0 +1,40 @@
++from dataclasses import dataclass, field
++
++from lerobot.cameras import CameraConfig
++
++from ..config import RobotConfig
++from ..so102_follower.config_so102_follower import SO102FollowerConfig
++
++
++@RobotConfig.register_subclass("bi_so102_follower")
++@dataclass
++class BiSO102FollowerConfig(RobotConfig):
++    left_arm_config: SO102FollowerConfig
++    right_arm_config: SO102FollowerConfig
++
++    cameras: dict[str, CameraConfig] = field(default_factory=dict)
++
++
++@dataclass
++class BiSO102HostConfig:
++    port_zmq_cmd: int = 5555
++    port_zmq_observations: int = 5556
++
++    connection_time_s: int = 0
++
++    watchdog_timeout_ms: int = 500
++
++    max_loop_freq_hz: int = 30
++
++
++@RobotConfig.register_subclass("bi_so102_client")
++@dataclass
++class BiSO102ClientConfig(RobotConfig):
++    remote_ip: str
++    port_zmq_cmd: int = 5555
++    port_zmq_observations: int = 5556
++
++    polling_timeout_ms: int = 15
++    connect_timeout_s: int = 5
++
++    cameras: dict[str, CameraConfig] = field(default_factory=dict)
+diff --git a/src/lerobot/robots/bi_so_follower/__init__.py b/src/lerobot/robots/bi_so_follower/__init__.py
+index 1d63dcb..c2de673 100644
+--- a/src/lerobot/robots/bi_so_follower/__init__.py
++++ b/src/lerobot/robots/bi_so_follower/__init__.py
+@@ -14,7 +14,28 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++from .bi_so_base_client import BiSOBaseClient
++from .bi_so_base_follower import BiSOBaseFollower
++from .bi_so_client import BiSOClient
+ from .bi_so_follower import BiSOFollower
+-from .config_bi_so_follower import BiSOFollowerConfig
++from .config_bi_so_follower import (
++    BiSOBaseClientConfig,
++    BiSOBaseFollowerConfig,
++    BiSOBaseHostConfig,
++    BiSOClientConfig,
++    BiSOFollowerConfig,
++    BiSOHostConfig,
++)
+ 
+-__all__ = ["BiSOFollower", "BiSOFollowerConfig"]
++__all__ = [
++    "BiSOBaseClient",
++    "BiSOBaseClientConfig",
++    "BiSOBaseFollower",
++    "BiSOBaseFollowerConfig",
++    "BiSOBaseHostConfig",
++    "BiSOClient",
++    "BiSOClientConfig",
++    "BiSOFollower",
++    "BiSOFollowerConfig",
++    "BiSOHostConfig",
++]
+diff --git a/src/lerobot/robots/bi_so_follower/bi_so_base_client.py b/src/lerobot/robots/bi_so_follower/bi_so_base_client.py
+new file mode 100644
+index 0000000..25927d5
+--- /dev/null
++++ b/src/lerobot/robots/bi_so_follower/bi_so_base_client.py
+@@ -0,0 +1,239 @@
++import base64
++import json
++import logging
++import time
++from functools import cached_property
++
++import cv2
++import numpy as np
++
++from lerobot.types import RobotAction, RobotObservation
++from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
++from lerobot.utils.errors import DeviceNotConnectedError
++
++from ..robot import Robot
++from .config_bi_so_follower import BiSOBaseClientConfig
++
++SO_JOINTS = (
++    "shoulder_pan",
++    "shoulder_lift",
++    "elbow_flex",
++    "wrist_flex",
++    "wrist_roll",
++    "gripper",
++)
++
++
++BASE_FEATURES = ("x.vel", "y.vel", "theta.vel")
++
++# Base speed presets cycled with the speed_up / speed_down keys.
++SPEED_LEVELS = (
++    {"xy": 0.1, "theta": 30.0},
++    {"xy": 0.25, "theta": 60.0},
++    {"xy": 0.4, "theta": 90.0},
++)
++
++
++class BiSOBaseClient(Robot):
++    config_class = BiSOBaseClientConfig
++    name = "bi_so_base_client"
++
++    def __init__(self, config: BiSOBaseClientConfig):
++        import zmq
++
++        self._zmq = zmq
++        super().__init__(config)
++        self.config = config
++
++        self.remote_ip = config.remote_ip
++        self.port_zmq_cmd = config.port_zmq_cmd
++        self.port_zmq_observations = config.port_zmq_observations
++        self.polling_timeout_ms = config.polling_timeout_ms
++        self.connect_timeout_s = config.connect_timeout_s
++
++        self.zmq_context = None
++        self.zmq_cmd_socket = None
++        self.zmq_observation_socket = None
++
++        self.last_frames: dict[str, np.ndarray] = {}
++        self.last_state: dict[str, float] = {}
++        self._is_connected = False
++        self.cameras = dict(config.cameras)
++
++        self.teleop_keys = config.teleop_keys
++        self.speed_levels = SPEED_LEVELS
++        self.speed_index = 0
++        
++
++    @cached_property
++    def _state_ft(self) -> dict[str, type]:
++        keys = [f"{side}_{joint}.pos" for side in ("left", "right") for joint in SO_JOINTS]
++        keys += list(BASE_FEATURES)
++        return dict.fromkeys(keys, float)
++
++    @cached_property
++    def _cameras_ft(self) -> dict[str, tuple[int, int, int]]:
++        return {name: (cfg.height, cfg.width, 3) for name, cfg in self.config.cameras.items()}
++
++    @cached_property
++    def observation_features(self) -> dict[str, type | tuple]:
++        return {**self._state_ft, **self._cameras_ft}
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        return self._state_ft
++
++    @property
++    def is_connected(self) -> bool:
++        return self._is_connected
++
++    @property
++    def is_calibrated(self) -> bool:
++        return True
++
++    def calibrate(self) -> None:
++        pass
++
++    def configure(self) -> None:
++        pass
++
++    @check_if_already_connected
++    def connect(self, calibrate: bool = True) -> None:
++        zmq = self._zmq
++        self.zmq_context = zmq.Context()
++        self.zmq_cmd_socket = self.zmq_context.socket(zmq.PUSH)
++        self.zmq_cmd_socket.connect(f"tcp://{self.remote_ip}:{self.port_zmq_cmd}")
++        self.zmq_cmd_socket.setsockopt(zmq.CONFLATE, 1)
++
++        self.zmq_observation_socket = self.zmq_context.socket(zmq.PULL)
++        self.zmq_observation_socket.connect(f"tcp://{self.remote_ip}:{self.port_zmq_observations}")
++        self.zmq_observation_socket.setsockopt(zmq.CONFLATE, 1)
++
++        poller = zmq.Poller()
++        poller.register(self.zmq_observation_socket, zmq.POLLIN)
++        socks = dict(poller.poll(self.connect_timeout_s * 1000))
++        if self.zmq_observation_socket not in socks or socks[self.zmq_observation_socket] != zmq.POLLIN:
++            raise DeviceNotConnectedError(
++                f"Timeout waiting for BiSOBase host at {self.remote_ip}. Is the host running on the Raspberry Pi?"
++            )
++
++        self._is_connected = True
++        logging.info(f"{self} connected to host {self.remote_ip}.")
++
++    def _poll_latest_message(self) -> str | None:
++        zmq = self._zmq
++        poller = zmq.Poller()
++        poller.register(self.zmq_observation_socket, zmq.POLLIN)
++        try:
++            socks = dict(poller.poll(self.polling_timeout_ms))
++        except zmq.ZMQError as e:
++            logging.error(f"ZMQ polling error: {e}")
++            return None
++        if self.zmq_observation_socket not in socks:
++            return None
++
++        last_msg = None
++        while True:
++            try:
++                last_msg = self.zmq_observation_socket.recv_string(zmq.NOBLOCK)
++            except zmq.Again:
++                break
++        return last_msg
++
++    @staticmethod
++    def _decode_image(image_b64: str) -> np.ndarray | None:
++        if not image_b64:
++            return None
++        try:
++            jpg = base64.b64decode(image_b64)
++            return cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
++        except (TypeError, ValueError) as e:
++            logging.error(f"Error decoding image: {e}")
++            return None
++
++    @check_if_not_connected
++    def get_observation(self) -> RobotObservation:
++        msg = self._poll_latest_message()
++        if msg is not None:
++            try:
++                observation = json.loads(msg)
++            except json.JSONDecodeError as e:
++                logging.error(f"Error decoding observation: {e}")
++                observation = None
++            if observation is not None:
++                self.last_state = {key: float(observation.get(key, 0.0)) for key in self._state_ft}
++                for cam_name in self._cameras_ft:
++                    frame = self._decode_image(observation.get(cam_name, ""))
++                    if frame is not None:
++                        self.last_frames[cam_name] = frame
++
++        obs_dict: RobotObservation = dict(self.last_state)
++        for cam_name, (height, width, _) in self._cameras_ft.items():
++            frame = self.last_frames.get(cam_name)
++            if frame is None:
++                logging.warning(f"No frame for camera {cam_name} yet")
++                frame = np.zeros((height, width, 3), dtype=np.uint8)
++            obs_dict[cam_name] = frame
++        return obs_dict
++
++    def _from_keyboard_to_base_action(self, pressed_keys) -> dict[str, float]:
++        """Translate the pressed keys into body-frame base velocities.
++
++        `lerobot-record` calls this by name when a keyboard teleoperator is
++        present, and merges the result into the recorded action.
++        """
++        if self.teleop_keys["speed_up"] in pressed_keys:
++            self.speed_index = min(self.speed_index + 1, len(self.speed_levels) - 1)
++        if self.teleop_keys["speed_down"] in pressed_keys:
++            self.speed_index = max(self.speed_index - 1, 0)
++
++        speed = self.speed_levels[self.speed_index]
++        xy_speed = speed["xy"]
++        theta_speed = speed["theta"]
++
++        x_cmd = 0.0  # m/s, forward is positive
++        y_cmd = 0.0  # m/s, left is positive
++        theta_cmd = 0.0  # deg/s, counter-clockwise is positive
++
++        if self.teleop_keys["forward"] in pressed_keys:
++            x_cmd += xy_speed
++        if self.teleop_keys["backward"] in pressed_keys:
++            x_cmd -= xy_speed
++        if self.teleop_keys["left"] in pressed_keys:
++            y_cmd += xy_speed
++        if self.teleop_keys["right"] in pressed_keys:
++            y_cmd -= xy_speed
++        if self.teleop_keys["rotate_left"] in pressed_keys:
++            theta_cmd += theta_speed
++        if self.teleop_keys["rotate_right"] in pressed_keys:
++            theta_cmd -= theta_speed
++
++        return {"x.vel": x_cmd, "y.vel": y_cmd, "theta.vel": theta_cmd}
++
++    @check_if_not_connected
++    def send_action(self, action: RobotAction) -> RobotAction:
++        action_sent = {key: float(action[key]) for key in self._state_ft if key in action}
++        self.zmq_cmd_socket.send_string(json.dumps(action_sent))
++        return action_sent
++
++    @check_if_not_connected
++    def disconnect(self):
++        # Send a zero-velocity command before tearing down the sockets. The host
++        # holds the last velocity it received, so without this the wheels keep
++        # turning until its watchdog fires.
++        try:
++            stop = dict.fromkeys(self._state_ft, 0.0)
++            stop.update(self.last_state)  # keep arm targets where they are
++            for key in BASE_FEATURES:
++                stop[key] = 0.0
++            self.zmq_cmd_socket.send_string(json.dumps(stop))
++            time.sleep(0.1)  # let it leave before the socket closes
++            logging.info("Sent base stop command.")
++        except Exception as exc:  # noqa: BLE001 - teardown must not raise
++            logging.warning("Could not send base stop command: %s", exc)
++
++        self.zmq_observation_socket.close()
++        self.zmq_cmd_socket.close()
++        self.zmq_context.term()
++        self._is_connected = False
++        logging.info(f"{self} disconnected.")
+diff --git a/src/lerobot/robots/bi_so_follower/bi_so_base_follower.py b/src/lerobot/robots/bi_so_follower/bi_so_base_follower.py
+new file mode 100644
+index 0000000..2757bfa
+--- /dev/null
++++ b/src/lerobot/robots/bi_so_follower/bi_so_base_follower.py
+@@ -0,0 +1,307 @@
++#!/usr/bin/env python
++
++# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Bimanual SO follower with a 3-omniwheel mobile base.
++
++The base wheels share the RIGHT arm's serial bus (IDs 7/8/9), so the robot needs
++no extra USB adapter. Arm motors stay in position mode and are read as
++``Present_Position``; wheels run in velocity mode and are read as
++``Present_Velocity``, then converted to body-frame ``x/y/theta`` velocities.
++
++Observation and action are 15-dimensional:
++    left_*.pos  (6) + right_*.pos (6) + x.vel, y.vel, theta.vel (3)
++
++The kinematics are the same as LeKiwi's: three omniwheels mounted at 240/0/120
++degrees with a -90 degree offset.
++"""
++
++import logging
++from functools import cached_property
++from typing import Any
++
++import numpy as np
++
++from lerobot.motors import Motor, MotorCalibration, MotorNormMode
++from lerobot.motors.feetech import OperatingMode
++from lerobot.types import RobotAction, RobotObservation
++from lerobot.utils.decorators import check_if_not_connected
++
++from .bi_so_follower import BiSOFollower
++from .config_bi_so_follower import BiSOBaseFollowerConfig
++
++logger = logging.getLogger(__name__)
++
++# Wheel geometry. Adjust to match the physical base.
++WHEEL_RADIUS = 0.05  # m
++BASE_RADIUS = 0.125  # m, centre of rotation to each wheel
++WHEEL_ANGLES_DEG = (240.0, 0.0, 120.0)  # mounting angles, -90 offset applied below
++MAX_RAW = 3000  # per-wheel raw speed cap
++
++BASE_MOTORS: dict[str, Motor] = {
++    "base_left_wheel": Motor(7, "sts3215", MotorNormMode.RANGE_M100_100),
++    "base_back_wheel": Motor(8, "sts3215", MotorNormMode.RANGE_M100_100),
++    "base_right_wheel": Motor(9, "sts3215", MotorNormMode.RANGE_M100_100),
++}
++
++BASE_FEATURES = ("x.vel", "y.vel", "theta.vel")
++
++
++def _add_motors_to_bus(bus, motors: dict[str, Motor]) -> None:
++    """Register extra motors on an already-constructed bus.
++
++    `MotorsBus.__init__` builds id lookup tables and caches `models`/`ids` from
++    the motor dict, so adding entries afterwards requires rebuilding them.
++    Without this, reads on the new ids raise `KeyError`.
++    """
++    bus.motors.update(motors)
++
++    bus._id_to_model_dict = {m.id: m.model for m in bus.motors.values()}
++    bus._id_to_name_dict = {m.id: name for name, m in bus.motors.items()}
++
++    # `models` and `ids` are cached_property; drop them so they recompute.
++    for cached in ("models", "ids", "_has_different_ctrl_tables"):
++        bus.__dict__.pop(cached, None)
++
++    bus._validate_motors()
++
++
++class BiSOBaseFollower(BiSOFollower):
++    """Bimanual SO follower whose right-arm bus also carries three base wheels."""
++
++    config_class = BiSOBaseFollowerConfig
++    name = "bi_so_base_follower"
++
++    def __init__(self, config: BiSOBaseFollowerConfig):
++        super().__init__(config)
++        self.config = config
++
++        # Motors the right arm owns, before the wheels join its bus.
++        self.right_arm_motors = list(self.right_arm.bus.motors)
++
++        # The wheels live on the right arm's bus; declare them so the bus will
++        # talk to IDs 7/8/9 as well.
++        self.base_motors = list(BASE_MOTORS)
++        _add_motors_to_bus(self.right_arm.bus, BASE_MOTORS)
++
++    # ── features ──────────────────────────────────────────────────────────
++
++    @property
++    def _motors_ft(self) -> dict[str, type]:
++        arm_ft = {
++            **{f"left_{k}": v for k, v in self.left_arm._motors_ft.items()},
++            **{f"right_{k}": v for k, v in self.right_arm._motors_ft.items()},
++        }
++        return {**arm_ft, **dict.fromkeys(BASE_FEATURES, float)}
++
++    @cached_property
++    def observation_features(self) -> dict[str, type | tuple]:
++        return {**self._motors_ft, **self._cameras_ft}
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        return self._motors_ft
++
++    # ── lifecycle ─────────────────────────────────────────────────────────
++
++    def connect(self, calibrate: bool = True) -> None:
++        """Connect both arms, then put the wheels back into velocity mode.
++
++        `SOFollower.connect()` runs its own `configure()`, which walks every
++        motor on its bus and writes POSITION mode. The wheels now live on the
++        right arm's bus, so they get caught by that loop and stop responding to
++        `Goal_Velocity`. Re-apply velocity mode after the arms are up.
++        """
++        super().connect(calibrate)
++        self._configure_base()
++
++    def _configure_base(self) -> None:
++        """Put the three wheels into velocity mode."""
++        bus = self.right_arm.bus
++        bus.disable_torque(self.base_motors)
++        for name in self.base_motors:
++            bus.write("Operating_Mode", name, OperatingMode.VELOCITY.value)
++        bus.enable_torque(self.base_motors)
++        logger.info("Base wheels set to velocity mode: %s", ", ".join(self.base_motors))
++
++    def configure(self) -> None:
++        """Arms in position mode, wheels in velocity mode."""
++        self.left_arm.configure()
++
++        bus = self.right_arm.bus
++        bus.disable_torque()
++        bus.configure_motors()
++        for name in self.right_arm_motors:
++            bus.write("Operating_Mode", name, OperatingMode.POSITION.value)
++            bus.write("P_Coefficient", name, 16)
++            bus.write("I_Coefficient", name, 0)
++            bus.write("D_Coefficient", name, 32)
++            if name.endswith("gripper"):
++                bus.write("Max_Torque_Limit", name, 500)
++                bus.write("Protection_Current", name, 250)
++                bus.write("Overload_Torque", name, 25)
++
++        bus.enable_torque()
++        self._configure_base()
++
++    def calibrate(self) -> None:
++        """Calibrate both arms, then give the wheels a pass-through calibration.
++
++        Wheels spin continuously, so they get homing offset 0 and the full
++        0..4095 range instead of a measured range of motion.
++        """
++        self.left_arm.calibrate()
++        self.right_arm.calibrate()
++
++        bus = self.right_arm.bus
++        wheel_calib = {
++            name: MotorCalibration(
++                id=BASE_MOTORS[name].id,
++                drive_mode=0,
++                homing_offset=0,
++                range_min=0,
++                range_max=4095,
++            )
++            for name in self.base_motors
++        }
++        bus.calibration.update(wheel_calib)
++        bus.write_calibration(wheel_calib)
++        logger.info("Base wheels calibrated (pass-through: offset 0, range 0-4095)")
++
++    def setup_motors(self) -> None:
++        super().setup_motors()
++        for motor in reversed(self.base_motors):
++            input(f"Connect the controller board to the '{motor}' motor only and press enter.")
++            self.right_arm.bus.setup_motor(motor)
++
++    # ── data ──────────────────────────────────────────────────────────────
++
++    @check_if_not_connected
++    def get_observation(self) -> RobotObservation:
++        obs_dict: RobotObservation = {}
++
++        for key, value in self.left_arm.get_observation().items():
++            obs_dict[key if key in self._top_level_cam_keys else f"left_{key}"] = value
++
++        # The right arm's own get_observation() would also read the wheels as
++        # positions, so read its motors explicitly instead.
++        bus = self.right_arm.bus
++        arm_pos = bus.sync_read("Present_Position", self.right_arm_motors)
++        for key, value in arm_pos.items():
++            obs_dict[f"right_{key}.pos"] = value
++        for cam_key, cam in self.right_arm.cameras.items():
++            obs_dict[f"right_{cam_key}"] = cam.read_latest()
++
++        wheel_vel = bus.sync_read("Present_Velocity", self.base_motors)
++        obs_dict.update(
++            self._wheel_raw_to_body(
++                wheel_vel["base_left_wheel"],
++                wheel_vel["base_back_wheel"],
++                wheel_vel["base_right_wheel"],
++            )
++        )
++
++        return obs_dict
++
++    @check_if_not_connected
++    def send_action(self, action: RobotAction) -> RobotAction:
++        left_action = {
++            k.removeprefix("left_"): v for k, v in action.items() if k.startswith("left_")
++        }
++        right_action = {
++            k.removeprefix("right_"): v for k, v in action.items() if k.startswith("right_")
++        }
++        base_action = {k: float(action.get(k, 0.0)) for k in BASE_FEATURES}
++
++        sent_left = self.left_arm.send_action(left_action)
++
++        # Right arm: write positions only to the arm motors on that bus.
++        arm_goal = {k.replace(".pos", ""): v for k, v in right_action.items() if k.endswith(".pos")}
++        arm_goal = {k: v for k, v in arm_goal.items() if k in self.right_arm_motors}
++        bus = self.right_arm.bus
++        if arm_goal:
++            bus.sync_write("Goal_Position", arm_goal)
++
++        wheel_goal = self._body_to_wheel_raw(
++            base_action["x.vel"], base_action["y.vel"], base_action["theta.vel"]
++        )
++        bus.sync_write("Goal_Velocity", wheel_goal)
++
++        sent = {f"left_{k}": v for k, v in sent_left.items()}
++        sent.update({f"right_{k}.pos": v for k, v in arm_goal.items()})
++        sent.update(base_action)
++        return sent
++
++    def stop_base(self) -> None:
++        self.right_arm.bus.sync_write(
++            "Goal_Velocity", dict.fromkeys(self.base_motors, 0), num_retry=5
++        )
++        logger.info("Base motors stopped")
++
++    def disconnect(self) -> None:
++        if self.is_connected:
++            try:
++                self.stop_base()
++            except Exception as exc:  # noqa: BLE001 - best effort on shutdown
++                logger.warning("Could not stop base motors: %s", exc)
++        super().disconnect()
++
++    # ── kinematics (3 omniwheels) ─────────────────────────────────────────
++
++    @staticmethod
++    def _degps_to_raw(degps: float) -> int:
++        speed_int = int(round(degps * (4096.0 / 360.0)))
++        return max(-0x8000, min(0x7FFF, speed_int))
++
++    @staticmethod
++    def _raw_to_degps(raw_speed: int) -> float:
++        return raw_speed / (4096.0 / 360.0)
++
++    @staticmethod
++    def _wheel_matrix() -> np.ndarray:
++        angles = np.radians(np.array(WHEEL_ANGLES_DEG) - 90.0)
++        return np.array([[np.cos(a), np.sin(a), BASE_RADIUS] for a in angles])
++
++    def _body_to_wheel_raw(self, x: float, y: float, theta: float) -> dict[str, int]:
++        """Body velocities (m/s, m/s, deg/s) -> per-wheel raw speed."""
++        velocity = np.array([x, y, theta * (np.pi / 180.0)])
++        wheel_degps = (self._wheel_matrix().dot(velocity) / WHEEL_RADIUS) * (180.0 / np.pi)
++
++        steps_per_deg = 4096.0 / 360.0
++        peak = max(abs(d) * steps_per_deg for d in wheel_degps)
++        if peak > MAX_RAW:
++            wheel_degps = wheel_degps * (MAX_RAW / peak)
++
++        raw = [self._degps_to_raw(d) for d in wheel_degps]
++        return {
++            "base_left_wheel": raw[0],
++            "base_back_wheel": raw[1],
++            "base_right_wheel": raw[2],
++        }
++
++    def _wheel_raw_to_body(
++        self, left_speed: int, back_speed: int, right_speed: int
++    ) -> dict[str, Any]:
++        """Per-wheel raw speed -> body velocities (m/s, m/s, deg/s)."""
++        wheel_degps = np.array(
++            [
++                self._raw_to_degps(left_speed),
++                self._raw_to_degps(back_speed),
++                self._raw_to_degps(right_speed),
++            ]
++        )
++        wheel_linear = wheel_degps * (np.pi / 180.0) * WHEEL_RADIUS
++        x, y, theta_rad = np.linalg.inv(self._wheel_matrix()).dot(wheel_linear)
++        return {"x.vel": float(x), "y.vel": float(y), "theta.vel": float(theta_rad * 180.0 / np.pi)}
+diff --git a/src/lerobot/robots/bi_so_follower/bi_so_base_host.py b/src/lerobot/robots/bi_so_follower/bi_so_base_host.py
+new file mode 100644
+index 0000000..2f0965d
+--- /dev/null
++++ b/src/lerobot/robots/bi_so_follower/bi_so_base_host.py
+@@ -0,0 +1,193 @@
++import base64
++import json
++import logging
++import os
++import time
++from dataclasses import dataclass, field
++from typing import Final
++
++import cv2
++import draccus
++import numpy as np
++import zmq
++
++from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401
++from lerobot.utils.utils import init_logging
++
++from .bi_so_base_follower import BiSOBaseFollower
++from .config_bi_so_follower import BiSOBaseFollowerConfig, BiSOBaseHostConfig
++
++MAX_CONSECUTIVE_READ_FAILURES: Final = 5
++
++
++@dataclass
++class BiSOBaseServerConfig:
++    robot: BiSOBaseFollowerConfig
++    host: BiSOBaseHostConfig = field(default_factory=BiSOBaseHostConfig)
++
++
++class BiSOBaseHost:
++    def __init__(self, config: BiSOBaseHostConfig):
++        self.zmq_context = zmq.Context()
++        self.zmq_cmd_socket = self.zmq_context.socket(zmq.PULL)
++        self.zmq_cmd_socket.setsockopt(zmq.CONFLATE, 1)
++        self.zmq_cmd_socket.bind(f"tcp://*:{config.port_zmq_cmd}")
++
++        self.zmq_observation_socket = self.zmq_context.socket(zmq.PUSH)
++        self.zmq_observation_socket.setsockopt(zmq.CONFLATE, 1)
++        self.zmq_observation_socket.bind(f"tcp://*:{config.port_zmq_observations}")
++
++        self.connection_time_s = config.connection_time_s
++        self.watchdog_timeout_ms = config.watchdog_timeout_ms
++        self.max_loop_freq_hz = config.max_loop_freq_hz
++        self.observation_freq_hz = config.observation_freq_hz
++
++    def disconnect(self):
++        self.zmq_observation_socket.close()
++        self.zmq_cmd_socket.close()
++        self.zmq_context.term()
++
++
++# JPEG quality for the observation stream. 90 costs about 20 Mbps per camera at
++# 640x480/30fps, which leaves no headroom for a third camera on this link; 70
++# costs about 12 and is visually indistinguishable here, because the frames have
++# already been through the camera's own MJPG compression before they reach us.
++# Override without editing code: LEROBOT_JPEG_QUALITY=80
++JPEG_QUALITY: Final[int] = int(os.environ.get("LEROBOT_JPEG_QUALITY", "70"))
++
++
++def _encode_observation(observation: dict) -> dict:
++    encoded = {}
++    for key, value in observation.items():
++        if isinstance(value, np.ndarray):
++            ret, buffer = cv2.imencode(".jpg", value, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
++            encoded[key] = base64.b64encode(buffer).decode("utf-8") if ret else ""
++        else:
++            encoded[key] = float(value)
++    return encoded
++
++
++@draccus.wrap()
++def main(cfg: BiSOBaseServerConfig):
++    init_logging()
++    logging.info("Configuring BiSOBaseFollower")
++    robot = BiSOBaseFollower(cfg.robot)
++
++    logging.info("Connecting BiSOBaseFollower")
++    robot.connect()
++
++    logging.info("Starting host")
++    host = BiSOBaseHost(cfg.host)
++
++    last_cmd_time = time.time()
++    obs_interval = 1.0 / max(host.observation_freq_hz, 1)
++    # Schedule observations on a fixed grid. Anchoring to "when the last one
++    # started" would round the interval up to a whole command period, because an
++    # observation cycle costs more than one period and the error never catches up.
++    next_obs_time = time.time()
++    watchdog_active = False
++    client_connected = True
++    consecutive_read_failures = 0
++    logging.info(
++        "Command loop %d Hz, observation stream %d Hz.",
++        host.max_loop_freq_hz,
++        host.observation_freq_hz,
++    )
++    logging.info("Waiting for commands...")
++    try:
++        start = time.perf_counter()
++        duration = 0
++        while host.connection_time_s <= 0 or duration < host.connection_time_s:
++            loop_start_time = time.time()
++            try:
++                msg = host.zmq_cmd_socket.recv_string(zmq.NOBLOCK)
++                data = dict(json.loads(msg))
++                robot.send_action(data)
++                last_cmd_time = time.time()
++                watchdog_active = False
++            except zmq.Again:
++                pass
++            except Exception as e:
++                logging.error("Message fetching failed: %s", e)
++
++            now = time.time()
++            if (now - last_cmd_time > host.watchdog_timeout_ms / 1000) and not watchdog_active:
++                logging.warning(
++                    f"Command not received for more than {host.watchdog_timeout_ms} milliseconds. "
++                    "Holding arm position and stopping the base."
++                )
++                watchdog_active = True
++                # The arms hold position on their own, but the wheels run on a
++                # velocity command that would otherwise keep the robot rolling.
++                try:
++                    robot.stop_base()
++                except Exception as exc:  # noqa: BLE001 - never let this kill the loop
++                    logging.error("Watchdog could not stop the base: %s", exc)
++
++            # Commands are applied every iteration; observations are far more
++            # expensive (two JPEG frames) and only need the camera frame rate.
++            now = time.time()
++            if now < next_obs_time:
++                elapsed = time.time() - loop_start_time
++                time.sleep(max(1 / host.max_loop_freq_hz - elapsed, 0))
++                duration = time.perf_counter() - start
++                continue
++            # Advance along the grid, not from "now", so a slow cycle does not
++            # push every later observation back. Re-base only if we fell a whole
++            # interval behind, which would otherwise cause a burst of catch-up.
++            next_obs_time += obs_interval
++            if next_obs_time <= now:
++                next_obs_time = now + obs_interval
++
++            last_observation = None
++            try:
++                last_observation = _encode_observation(robot.get_observation())
++                consecutive_read_failures = 0
++            except ConnectionError as e:
++                consecutive_read_failures += 1
++                logging.warning(
++                    "Observation read failed (%d/%d), skipping this cycle: %s",
++                    consecutive_read_failures,
++                    MAX_CONSECUTIVE_READ_FAILURES,
++                    e,
++                )
++                if consecutive_read_failures >= MAX_CONSECUTIVE_READ_FAILURES:
++                    logging.error(
++                        "Observation read failed %d times in a row. Stopping host.",
++                        consecutive_read_failures,
++                    )
++                    raise
++
++            if last_observation is not None:
++                try:
++                    host.zmq_observation_socket.send_string(json.dumps(last_observation), flags=zmq.NOBLOCK)
++                    if not client_connected:
++                        logging.info("Client connected, sending observations")
++                        client_connected = True
++                except zmq.Again:
++                    if client_connected:
++                        logging.warning("No client connected, observations are dropped until one connects")
++                        client_connected = False
++
++            elapsed = time.time() - loop_start_time
++            time.sleep(max(1 / host.max_loop_freq_hz - elapsed, 0))
++            duration = time.perf_counter() - start
++        print("Cycle time reached.")
++
++    except KeyboardInterrupt:
++        print("Keyboard interrupt received. Exiting...")
++    finally:
++        print("Shutting down BiSOBase host.")
++        # Stop the wheels before anything else can fail during teardown.
++        try:
++            robot.stop_base()
++        except Exception as exc:  # noqa: BLE001
++            logging.error("Could not stop the base on shutdown: %s", exc)
++        robot.disconnect()
++        host.disconnect()
++
++    logging.info("Finished BiSOBase host cleanly")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/lerobot/robots/bi_so_follower/bi_so_client.py b/src/lerobot/robots/bi_so_follower/bi_so_client.py
+new file mode 100644
+index 0000000..169a9e0
+--- /dev/null
++++ b/src/lerobot/robots/bi_so_follower/bi_so_client.py
+@@ -0,0 +1,175 @@
++import base64
++import json
++import logging
++from functools import cached_property
++
++import cv2
++import numpy as np
++
++from lerobot.types import RobotAction, RobotObservation
++from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
++from lerobot.utils.errors import DeviceNotConnectedError
++
++from ..robot import Robot
++from .config_bi_so_follower import BiSOClientConfig
++
++SO_JOINTS = (
++    "shoulder_pan",
++    "shoulder_lift",
++    "elbow_flex",
++    "wrist_flex",
++    "wrist_roll",
++    "gripper",
++)
++
++
++class BiSOClient(Robot):
++    config_class = BiSOClientConfig
++    name = "bi_so_client"
++
++    def __init__(self, config: BiSOClientConfig):
++        import zmq
++
++        self._zmq = zmq
++        super().__init__(config)
++        self.config = config
++
++        self.remote_ip = config.remote_ip
++        self.port_zmq_cmd = config.port_zmq_cmd
++        self.port_zmq_observations = config.port_zmq_observations
++        self.polling_timeout_ms = config.polling_timeout_ms
++        self.connect_timeout_s = config.connect_timeout_s
++
++        self.zmq_context = None
++        self.zmq_cmd_socket = None
++        self.zmq_observation_socket = None
++
++        self.last_frames: dict[str, np.ndarray] = {}
++        self.last_state: dict[str, float] = {}
++        self._is_connected = False
++        self.cameras = dict(config.cameras)
++        
++
++    @cached_property
++    def _state_ft(self) -> dict[str, type]:
++        keys = [f"{side}_{joint}.pos" for side in ("left", "right") for joint in SO_JOINTS]
++        return dict.fromkeys(keys, float)
++
++    @cached_property
++    def _cameras_ft(self) -> dict[str, tuple[int, int, int]]:
++        return {name: (cfg.height, cfg.width, 3) for name, cfg in self.config.cameras.items()}
++
++    @cached_property
++    def observation_features(self) -> dict[str, type | tuple]:
++        return {**self._state_ft, **self._cameras_ft}
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        return self._state_ft
++
++    @property
++    def is_connected(self) -> bool:
++        return self._is_connected
++
++    @property
++    def is_calibrated(self) -> bool:
++        return True
++
++    def calibrate(self) -> None:
++        pass
++
++    def configure(self) -> None:
++        pass
++
++    @check_if_already_connected
++    def connect(self, calibrate: bool = True) -> None:
++        zmq = self._zmq
++        self.zmq_context = zmq.Context()
++        self.zmq_cmd_socket = self.zmq_context.socket(zmq.PUSH)
++        self.zmq_cmd_socket.connect(f"tcp://{self.remote_ip}:{self.port_zmq_cmd}")
++        self.zmq_cmd_socket.setsockopt(zmq.CONFLATE, 1)
++
++        self.zmq_observation_socket = self.zmq_context.socket(zmq.PULL)
++        self.zmq_observation_socket.connect(f"tcp://{self.remote_ip}:{self.port_zmq_observations}")
++        self.zmq_observation_socket.setsockopt(zmq.CONFLATE, 1)
++
++        poller = zmq.Poller()
++        poller.register(self.zmq_observation_socket, zmq.POLLIN)
++        socks = dict(poller.poll(self.connect_timeout_s * 1000))
++        if self.zmq_observation_socket not in socks or socks[self.zmq_observation_socket] != zmq.POLLIN:
++            raise DeviceNotConnectedError(
++                f"Timeout waiting for BiSO host at {self.remote_ip}. Is the host running on the Raspberry Pi?"
++            )
++
++        self._is_connected = True
++        logging.info(f"{self} connected to host {self.remote_ip}.")
++
++    def _poll_latest_message(self) -> str | None:
++        zmq = self._zmq
++        poller = zmq.Poller()
++        poller.register(self.zmq_observation_socket, zmq.POLLIN)
++        try:
++            socks = dict(poller.poll(self.polling_timeout_ms))
++        except zmq.ZMQError as e:
++            logging.error(f"ZMQ polling error: {e}")
++            return None
++        if self.zmq_observation_socket not in socks:
++            return None
++
++        last_msg = None
++        while True:
++            try:
++                last_msg = self.zmq_observation_socket.recv_string(zmq.NOBLOCK)
++            except zmq.Again:
++                break
++        return last_msg
++
++    @staticmethod
++    def _decode_image(image_b64: str) -> np.ndarray | None:
++        if not image_b64:
++            return None
++        try:
++            jpg = base64.b64decode(image_b64)
++            return cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
++        except (TypeError, ValueError) as e:
++            logging.error(f"Error decoding image: {e}")
++            return None
++
++    @check_if_not_connected
++    def get_observation(self) -> RobotObservation:
++        msg = self._poll_latest_message()
++        if msg is not None:
++            try:
++                observation = json.loads(msg)
++            except json.JSONDecodeError as e:
++                logging.error(f"Error decoding observation: {e}")
++                observation = None
++            if observation is not None:
++                self.last_state = {key: float(observation.get(key, 0.0)) for key in self._state_ft}
++                for cam_name in self._cameras_ft:
++                    frame = self._decode_image(observation.get(cam_name, ""))
++                    if frame is not None:
++                        self.last_frames[cam_name] = frame
++
++        obs_dict: RobotObservation = dict(self.last_state)
++        for cam_name, (height, width, _) in self._cameras_ft.items():
++            frame = self.last_frames.get(cam_name)
++            if frame is None:
++                logging.warning(f"No frame for camera {cam_name} yet")
++                frame = np.zeros((height, width, 3), dtype=np.uint8)
++            obs_dict[cam_name] = frame
++        return obs_dict
++
++    @check_if_not_connected
++    def send_action(self, action: RobotAction) -> RobotAction:
++        action_sent = {key: float(action[key]) for key in self._state_ft if key in action}
++        self.zmq_cmd_socket.send_string(json.dumps(action_sent))
++        return action_sent
++
++    @check_if_not_connected
++    def disconnect(self):
++        self.zmq_observation_socket.close()
++        self.zmq_cmd_socket.close()
++        self.zmq_context.term()
++        self._is_connected = False
++        logging.info(f"{self} disconnected.")
+diff --git a/src/lerobot/robots/bi_so_follower/bi_so_host.py b/src/lerobot/robots/bi_so_follower/bi_so_host.py
+new file mode 100644
+index 0000000..a811c76
+--- /dev/null
++++ b/src/lerobot/robots/bi_so_follower/bi_so_host.py
+@@ -0,0 +1,146 @@
++import base64
++import json
++import logging
++import time
++from dataclasses import dataclass, field
++from typing import Final
++
++import cv2
++import draccus
++import numpy as np
++import zmq
++
++from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401
++from lerobot.utils.utils import init_logging
++
++from .bi_so_follower import BiSOFollower
++from .config_bi_so_follower import BiSOFollowerConfig, BiSOHostConfig
++
++MAX_CONSECUTIVE_READ_FAILURES: Final = 5
++
++
++@dataclass
++class BiSOServerConfig:
++    robot: BiSOFollowerConfig
++    host: BiSOHostConfig = field(default_factory=BiSOHostConfig)
++
++
++class BiSOHost:
++    def __init__(self, config: BiSOHostConfig):
++        self.zmq_context = zmq.Context()
++        self.zmq_cmd_socket = self.zmq_context.socket(zmq.PULL)
++        self.zmq_cmd_socket.setsockopt(zmq.CONFLATE, 1)
++        self.zmq_cmd_socket.bind(f"tcp://*:{config.port_zmq_cmd}")
++
++        self.zmq_observation_socket = self.zmq_context.socket(zmq.PUSH)
++        self.zmq_observation_socket.setsockopt(zmq.CONFLATE, 1)
++        self.zmq_observation_socket.bind(f"tcp://*:{config.port_zmq_observations}")
++
++        self.connection_time_s = config.connection_time_s
++        self.watchdog_timeout_ms = config.watchdog_timeout_ms
++        self.max_loop_freq_hz = config.max_loop_freq_hz
++
++    def disconnect(self):
++        self.zmq_observation_socket.close()
++        self.zmq_cmd_socket.close()
++        self.zmq_context.term()
++
++
++def _encode_observation(observation: dict) -> dict:
++    encoded = {}
++    for key, value in observation.items():
++        if isinstance(value, np.ndarray):
++            ret, buffer = cv2.imencode(".jpg", value, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
++            encoded[key] = base64.b64encode(buffer).decode("utf-8") if ret else ""
++        else:
++            encoded[key] = float(value)
++    return encoded
++
++
++@draccus.wrap()
++def main(cfg: BiSOServerConfig):
++    init_logging()
++    logging.info("Configuring BiSOFollower")
++    robot = BiSOFollower(cfg.robot)
++
++    logging.info("Connecting BiSOFollower")
++    robot.connect()
++
++    logging.info("Starting host")
++    host = BiSOHost(cfg.host)
++
++    last_cmd_time = time.time()
++    watchdog_active = False
++    client_connected = True
++    consecutive_read_failures = 0
++    logging.info("Waiting for commands...")
++    try:
++        start = time.perf_counter()
++        duration = 0
++        while host.connection_time_s <= 0 or duration < host.connection_time_s:
++            loop_start_time = time.time()
++            try:
++                msg = host.zmq_cmd_socket.recv_string(zmq.NOBLOCK)
++                data = dict(json.loads(msg))
++                robot.send_action(data)
++                last_cmd_time = time.time()
++                watchdog_active = False
++            except zmq.Again:
++                pass
++            except Exception as e:
++                logging.error("Message fetching failed: %s", e)
++
++            now = time.time()
++            if (now - last_cmd_time > host.watchdog_timeout_ms / 1000) and not watchdog_active:
++                logging.warning(
++                    f"Command not received for more than {host.watchdog_timeout_ms} milliseconds. Holding position."
++                )
++                watchdog_active = True
++
++            last_observation = None
++            try:
++                last_observation = _encode_observation(robot.get_observation())
++                consecutive_read_failures = 0
++            except ConnectionError as e:
++                consecutive_read_failures += 1
++                logging.warning(
++                    "Observation read failed (%d/%d), skipping this cycle: %s",
++                    consecutive_read_failures,
++                    MAX_CONSECUTIVE_READ_FAILURES,
++                    e,
++                )
++                if consecutive_read_failures >= MAX_CONSECUTIVE_READ_FAILURES:
++                    logging.error(
++                        "Observation read failed %d times in a row. Stopping host.",
++                        consecutive_read_failures,
++                    )
++                    raise
++
++            if last_observation is not None:
++                try:
++                    host.zmq_observation_socket.send_string(json.dumps(last_observation), flags=zmq.NOBLOCK)
++                    if not client_connected:
++                        logging.info("Client connected, sending observations")
++                        client_connected = True
++                except zmq.Again:
++                    if client_connected:
++                        logging.warning("No client connected, observations are dropped until one connects")
++                        client_connected = False
++
++            elapsed = time.time() - loop_start_time
++            time.sleep(max(1 / host.max_loop_freq_hz - elapsed, 0))
++            duration = time.perf_counter() - start
++        print("Cycle time reached.")
++
++    except KeyboardInterrupt:
++        print("Keyboard interrupt received. Exiting...")
++    finally:
++        print("Shutting down BiSO host.")
++        robot.disconnect()
++        host.disconnect()
++
++    logging.info("Finished BiSO host cleanly")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/lerobot/robots/bi_so_follower/config_bi_so_follower.py b/src/lerobot/robots/bi_so_follower/config_bi_so_follower.py
+index 0c68e7c..d5a5951 100644
+--- a/src/lerobot/robots/bi_so_follower/config_bi_so_follower.py
++++ b/src/lerobot/robots/bi_so_follower/config_bi_so_follower.py
+@@ -34,3 +34,126 @@ class BiSOFollowerConfig(RobotConfig):
+     # observations (no `left_`/`right_` prefix). Per-arm cameras (declared on
+     # `{left,right}_arm_config.cameras`) are prefixed.
+     cameras: dict[str, CameraConfig] = field(default_factory=dict)
++
++
++@dataclass
++class BiSOHostConfig:
++    """Host-side (Raspberry Pi) settings for the bimanual SO follower.
++
++    The host owns the arms and cameras, binds the two ZMQ sockets and streams
++    observations to whichever client connects.
++    """
++
++    port_zmq_cmd: int = 5555
++    port_zmq_observations: int = 5556
++
++    # 0 means "run until interrupted".
++    connection_time_s: int = 0
++
++    # Hold position when no command arrives within this window.
++    watchdog_timeout_ms: int = 500
++
++    max_loop_freq_hz: int = 30
++    observation_freq_hz: int = 30
++
++
++@RobotConfig.register_subclass("bi_so_client")
++@dataclass
++class BiSOClientConfig(RobotConfig):
++    """Client-side (laptop/PC) settings for the bimanual SO follower.
++
++    `cameras` does NOT open any device here: the client only decodes JPEG frames
++    pushed by the host. The entries declare the expected keys and resolutions, so
++    the names and width/height must match the host configuration.
++    """
++
++    remote_ip: str
++    port_zmq_cmd: int = 5555
++    port_zmq_observations: int = 5556
++
++    polling_timeout_ms: int = 15
++    connect_timeout_s: int = 5
++
++    cameras: dict[str, CameraConfig] = field(default_factory=dict)
++
++
++# ──────────────────────────────────────────────────────────────────────────
++# Bimanual SO follower with a 3-omniwheel mobile base (LeKiwi-style).
++#
++# The three base wheels (IDs 7/8/9) share the RIGHT arm's serial bus, so no
++# extra adapter is needed. Arm motors run in position mode, wheels in velocity
++# mode, and the two groups are read and written separately.
++# ──────────────────────────────────────────────────────────────────────────
++
++
++@RobotConfig.register_subclass("bi_so_base_follower")
++@dataclass
++class BiSOBaseFollowerConfig(RobotConfig):
++    """Bimanual SO follower plus a 3-omniwheel base on the right arm's bus."""
++
++    left_arm_config: SOFollowerConfig
++    right_arm_config: SOFollowerConfig
++
++    cameras: dict[str, CameraConfig] = field(default_factory=dict)
++
++    # Keys the operator presses to drive the base while teleoperating the arms.
++    teleop_keys: dict[str, str] = field(
++        default_factory=lambda: {
++            "forward": "w",
++            "backward": "s",
++            "left": "a",
++            "right": "d",
++            "rotate_left": "z",
++            "rotate_right": "x",
++            "speed_up": "r",
++            "speed_down": "f",
++            "quit": "q",
++        }
++    )
++
++
++@dataclass
++class BiSOBaseHostConfig:
++    """Host-side (Raspberry Pi) settings for the bimanual SO follower with base."""
++
++    port_zmq_cmd: int = 5555
++    port_zmq_observations: int = 5556
++
++    connection_time_s: int = 0
++    watchdog_timeout_ms: int = 500
++    max_loop_freq_hz: int = 30
++    observation_freq_hz: int = 30
++
++
++@RobotConfig.register_subclass("bi_so_base_client")
++@dataclass
++class BiSOBaseClientConfig(RobotConfig):
++    """Client-side (laptop/PC) settings for the bimanual SO follower with base.
++
++    `cameras` does NOT open any device here: the client only decodes JPEG frames
++    pushed by the host. The entries declare the expected keys and resolutions, so
++    the names and width/height must match the host configuration.
++    """
++
++    remote_ip: str
++    port_zmq_cmd: int = 5555
++    port_zmq_observations: int = 5556
++
++    polling_timeout_ms: int = 15
++    connect_timeout_s: int = 5
++
++    cameras: dict[str, CameraConfig] = field(default_factory=dict)
++
++    teleop_keys: dict[str, str] = field(
++        default_factory=lambda: {
++            "forward": "w",
++            "backward": "s",
++            "left": "a",
++            "right": "d",
++            "rotate_left": "z",
++            "rotate_right": "x",
++            "speed_up": "r",
++            "speed_down": "f",
++            "quit": "q",
++        }
++    )
+diff --git a/src/lerobot/robots/so102_follower/__init__.py b/src/lerobot/robots/so102_follower/__init__.py
+new file mode 100644
+index 0000000..5d0fecf
+--- /dev/null
++++ b/src/lerobot/robots/so102_follower/__init__.py
+@@ -0,0 +1,4 @@
++from .config_so102_follower import SO102FollowerConfig, SO102FollowerRobotConfig
++from .so102_follower import SO102Follower
++
++__all__ = ["SO102Follower", "SO102FollowerConfig", "SO102FollowerRobotConfig"]
+diff --git a/src/lerobot/robots/so102_follower/config_so102_follower.py b/src/lerobot/robots/so102_follower/config_so102_follower.py
+new file mode 100644
+index 0000000..dbad0bc
+--- /dev/null
++++ b/src/lerobot/robots/so102_follower/config_so102_follower.py
+@@ -0,0 +1,24 @@
++from dataclasses import dataclass, field
++
++from lerobot.cameras import CameraConfig
++
++from ..config import RobotConfig
++
++
++@dataclass
++class SO102FollowerConfig:
++    port: str
++
++    disable_torque_on_disconnect: bool = True
++
++    max_relative_target: float | dict[str, float] | None = None
++
++    cameras: dict[str, CameraConfig] = field(default_factory=dict)
++
++    use_degrees: bool = True
++
++
++@RobotConfig.register_subclass("so102_follower")
++@dataclass
++class SO102FollowerRobotConfig(RobotConfig, SO102FollowerConfig):
++    pass
+diff --git a/src/lerobot/robots/so102_follower/so102_follower.py b/src/lerobot/robots/so102_follower/so102_follower.py
+new file mode 100644
+index 0000000..339b347
+--- /dev/null
++++ b/src/lerobot/robots/so102_follower/so102_follower.py
+@@ -0,0 +1,195 @@
++import logging
++import time
++from functools import cached_property
++from typing import Final
++
++from lerobot.cameras import make_cameras_from_configs
++from lerobot.motors import Motor, MotorCalibration, MotorNormMode
++from lerobot.motors.feetech import (
++    FeetechMotorsBus,
++    OperatingMode,
++)
++from lerobot.types import RobotAction, RobotObservation
++from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
++
++from ..robot import Robot
++from ..utils import ensure_safe_goal_position
++from .config_so102_follower import SO102FollowerRobotConfig
++
++logger = logging.getLogger(__name__)
++
++BUS_NUM_RETRY: Final = 2
++
++
++class SO102Follower(Robot):
++    config_class = SO102FollowerRobotConfig
++    name = "so102_follower"
++
++    def __init__(self, config: SO102FollowerRobotConfig):
++        super().__init__(config)
++        self.config = config
++        norm_mode_body = MotorNormMode.DEGREES if config.use_degrees else MotorNormMode.RANGE_M100_100
++        self.bus = FeetechMotorsBus(
++            port=self.config.port,
++            motors={
++                "shoulder_pan": Motor(1, "sts3215", norm_mode_body),
++                "shoulder_lift": Motor(2, "sts3215", norm_mode_body),
++                "elbow_flex": Motor(3, "sts3215", norm_mode_body),
++                "wrist_flex": Motor(4, "sts3215", norm_mode_body),
++                "wrist_yaw": Motor(5, "sts3215", norm_mode_body),
++                "wrist_roll": Motor(6, "sts3215", norm_mode_body),
++                "gripper": Motor(7, "sts3215", MotorNormMode.RANGE_0_100),
++            },
++            calibration=self.calibration,
++        )
++        self.cameras = make_cameras_from_configs(config.cameras)
++
++    @property
++    def _motors_ft(self) -> dict[str, type]:
++        return {f"{motor}.pos": float for motor in self.bus.motors}
++
++    @property
++    def _cameras_ft(self) -> dict[str, tuple]:
++        features: dict[str, tuple] = {}
++        for cam in self.cameras:
++            if getattr(self.cameras[cam], "use_rgb", True):
++                features[cam] = (self.cameras[cam].height, self.cameras[cam].width, 3)
++            if getattr(self.cameras[cam], "use_depth", False):
++                features[f"{cam}_depth"] = (self.cameras[cam].height, self.cameras[cam].width, 1)
++        return features
++
++    @cached_property
++    def observation_features(self) -> dict[str, type | tuple]:
++        return {**self._motors_ft, **self._cameras_ft}
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        return self._motors_ft
++
++    @property
++    def is_connected(self) -> bool:
++        return self.bus.is_connected and all(cam.is_connected for cam in self.cameras.values())
++
++    @check_if_already_connected
++    def connect(self, calibrate: bool = True) -> None:
++        self.bus.connect()
++        if not self.is_calibrated and calibrate:
++            logger.info(
++                "Mismatch between calibration values in the motor and the calibration file or no calibration file found"
++            )
++            self.calibrate()
++
++        for cam in self.cameras.values():
++            cam.connect()
++
++        self.configure()
++        logger.info(f"{self} connected.")
++
++    @check_if_not_connected
++    def disconnect(self):
++        self.bus.disconnect(self.config.disable_torque_on_disconnect)
++        for cam in self.cameras.values():
++            cam.disconnect()
++
++        logger.info(f"{self} disconnected.")
++
++    def configure(self) -> None:
++        with self.bus.torque_disabled():
++            self.bus.configure_motors()
++            for motor in self.bus.motors:
++                self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
++                self.bus.write("P_Coefficient", motor, 16)
++                self.bus.write("I_Coefficient", motor, 0)
++                self.bus.write("D_Coefficient", motor, 32)
++
++                if motor == "gripper":
++                    self.bus.write("Max_Torque_Limit", motor, 500)
++                    self.bus.write("Protection_Current", motor, 250)
++                    self.bus.write("Overload_Torque", motor, 25)
++
++    def setup_motors(self) -> None:
++        for motor in reversed(self.bus.motors):
++            input(f"Connect the controller board to the '{motor}' motor only and press enter.")
++            self.bus.setup_motor(motor)
++            print(f"'{motor}' motor id set to {self.bus.motors[motor].id}")
++
++    @property
++    def is_calibrated(self) -> bool:
++        return self.bus.is_calibrated
++
++    def calibrate(self) -> None:
++        if self.calibration:
++            user_input = input(
++                f"Press ENTER to use provided calibration file associated with the id {self.id}, or type 'c' and press ENTER to run calibration: "
++            )
++            if user_input.strip().lower() != "c":
++                logger.info(f"Writing calibration file associated with the id {self.id} to the motors")
++                self.bus.write_calibration(self.calibration)
++                return
++
++        logger.info(f"\nRunning calibration of {self}")
++        self.bus.disable_torque()
++        for motor in self.bus.motors:
++            self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
++
++        input(f"Move {self} to the middle of its range of motion and press ENTER....")
++        homing_offsets = self.bus.set_half_turn_homings()
++
++        full_turn_motor = "wrist_roll"
++        unknown_range_motors = [motor for motor in self.bus.motors if motor != full_turn_motor]
++        print(
++            f"Move all joints except '{full_turn_motor}' sequentially through their "
++            "entire ranges of motion.\nRecording positions. Press ENTER to stop..."
++        )
++        range_mins, range_maxes = self.bus.record_ranges_of_motion(unknown_range_motors)
++        range_mins[full_turn_motor] = 0
++        range_maxes[full_turn_motor] = 4095
++
++        self.calibration = {}
++        for motor, m in self.bus.motors.items():
++            self.calibration[motor] = MotorCalibration(
++                id=m.id,
++                drive_mode=0,
++                homing_offset=homing_offsets[motor],
++                range_min=range_mins[motor],
++                range_max=range_maxes[motor],
++            )
++
++        self.bus.write_calibration(self.calibration)
++        self._save_calibration()
++        print("Calibration saved to", self.calibration_fpath)
++
++    @check_if_not_connected
++    def get_observation(self) -> RobotObservation:
++        start = time.perf_counter()
++        obs_dict = self.bus.sync_read("Present_Position", num_retry=BUS_NUM_RETRY)
++        obs_dict = {f"{motor}.pos": val for motor, val in obs_dict.items()}
++        dt_ms = (time.perf_counter() - start) * 1e3
++        logger.debug(f"{self} read state: {dt_ms:.1f}ms")
++
++        for cam_key, cam in self.cameras.items():
++            if getattr(cam, "use_rgb", True):
++                start = time.perf_counter()
++                obs_dict[cam_key] = cam.read_latest()
++                dt_ms = (time.perf_counter() - start) * 1e3
++                logger.debug(f"{self} read {cam_key}: {dt_ms:.1f}ms")
++
++            if getattr(cam, "use_depth", False):
++                start = time.perf_counter()
++                obs_dict[f"{cam_key}_depth"] = cam.read_latest_depth()
++                dt_ms = (time.perf_counter() - start) * 1e3
++                logger.debug(f"{self} read {cam_key} depth: {dt_ms:.1f}ms")
++
++        return obs_dict
++
++    @check_if_not_connected
++    def send_action(self, action: RobotAction) -> RobotAction:
++        goal_pos = {key.removesuffix(".pos"): val for key, val in action.items() if key.endswith(".pos")}
++
++        if self.config.max_relative_target is not None:
++            present_pos = self.bus.sync_read("Present_Position", num_retry=BUS_NUM_RETRY)
++            goal_present_pos = {key: (g_pos, present_pos[key]) for key, g_pos in goal_pos.items()}
++            goal_pos = ensure_safe_goal_position(goal_present_pos, self.config.max_relative_target)
++
++        self.bus.sync_write("Goal_Position", goal_pos, num_retry=BUS_NUM_RETRY)
++        return {f"{motor}.pos": val for motor, val in goal_pos.items()}
+diff --git a/src/lerobot/robots/utils.py b/src/lerobot/robots/utils.py
+index f897a56..6759491 100644
+--- a/src/lerobot/robots/utils.py
++++ b/src/lerobot/robots/utils.py
+@@ -56,6 +56,18 @@ def make_robot_from_config(config: RobotConfig) -> Robot:
+         from .bi_so_follower import BiSOFollower
+ 
+         return BiSOFollower(config)
++    elif config.type == "bi_so_client":
++        from .bi_so_follower import BiSOClient
++
++        return BiSOClient(config)
++    elif config.type == "bi_so_base_follower":
++        from .bi_so_follower import BiSOBaseFollower
++
++        return BiSOBaseFollower(config)
++    elif config.type == "bi_so_base_client":
++        from .bi_so_follower import BiSOBaseClient
++
++        return BiSOBaseClient(config)
+     elif config.type == "reachy2":
+         from .reachy2 import Reachy2Robot
+ 
+@@ -80,6 +92,18 @@ def make_robot_from_config(config: RobotConfig) -> Robot:
+         from tests.mocks.mock_robot import MockRobot
+ 
+         return MockRobot(config)
++    elif config.type == "so102_follower":
++        from .so102_follower import SO102Follower
++
++        return SO102Follower(config)
++    elif config.type == "bi_so102_follower":
++        from .bi_so102_follower import BiSO102Follower
++
++        return BiSO102Follower(config)
++    elif config.type == "bi_so102_client":
++        from .bi_so102_follower import BiSO102Client
++
++        return BiSO102Client(config)
+     else:
+         try:
+             return cast(Robot, make_device_from_device_class(config))
+diff --git a/src/lerobot/scripts/lerobot_calibrate.py b/src/lerobot/scripts/lerobot_calibrate.py
+index 0a9cbee..974ed7d 100644
+--- a/src/lerobot/scripts/lerobot_calibrate.py
++++ b/src/lerobot/scripts/lerobot_calibrate.py
+@@ -41,6 +41,7 @@ from lerobot.robots import (  # noqa: F401
+     bi_openarm_follower,
+     bi_rebot_b601_follower,
+     bi_so_follower,
++    bi_so102_follower,
+     hope_jr,
+     koch_follower,
+     lekiwi,
+@@ -49,6 +50,7 @@ from lerobot.robots import (  # noqa: F401
+     openarm_follower,
+     rebot_b601_follower,
+     so_follower,
++    so102_follower,
+ )
+ from lerobot.teleoperators import (  # noqa: F401
+     Teleoperator,
+@@ -57,6 +59,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     bi_openarm_mini,
+     bi_rebot_102_leader,
+     bi_so_leader,
++    bi_so102_leader,
+     homunculus,
+     koch_leader,
+     make_teleoperator_from_config,
+@@ -65,6 +68,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     openarm_mini,
+     rebot_102_leader,
+     so_leader,
++    so102_leader,
+     unitree_g1,
+ )
+ from lerobot.utils.import_utils import register_third_party_plugins
+diff --git a/src/lerobot/scripts/lerobot_find_joint_limits.py b/src/lerobot/scripts/lerobot_find_joint_limits.py
+index b269eee..edf22b0 100644
+--- a/src/lerobot/scripts/lerobot_find_joint_limits.py
++++ b/src/lerobot/scripts/lerobot_find_joint_limits.py
+@@ -47,12 +47,14 @@ from lerobot.robots import (  # noqa: F401
+     bi_openarm_follower,
+     bi_rebot_b601_follower,
+     bi_so_follower,
++    bi_so102_follower,
+     koch_follower,
+     make_robot_from_config,
+     omx_follower,
+     openarm_follower,
+     rebot_b601_follower,
+     so_follower,
++    so102_follower,
+ )
+ from lerobot.teleoperators import (  # noqa: F401
+     TeleoperatorConfig,
+@@ -60,6 +62,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     bi_openarm_mini,
+     bi_rebot_102_leader,
+     bi_so_leader,
++    bi_so102_leader,
+     gamepad,
+     koch_leader,
+     make_teleoperator_from_config,
+@@ -68,6 +71,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     openarm_mini,
+     rebot_102_leader,
+     so_leader,
++    so102_leader,
+ )
+ from lerobot.utils.robot_utils import precise_sleep
+ 
+diff --git a/src/lerobot/scripts/lerobot_record.py b/src/lerobot/scripts/lerobot_record.py
+index 4233f0b..1fc65f0 100644
+--- a/src/lerobot/scripts/lerobot_record.py
++++ b/src/lerobot/scripts/lerobot_record.py
+@@ -121,6 +121,7 @@ from lerobot.robots import (  # noqa: F401
+     bi_openarm_follower,
+     bi_rebot_b601_follower,
+     bi_so_follower,
++    bi_so102_follower,
+     earthrover_mini_plus,
+     hope_jr,
+     koch_follower,
+@@ -130,6 +131,7 @@ from lerobot.robots import (  # noqa: F401
+     reachy2,
+     rebot_b601_follower,
+     so_follower,
++    so102_follower,
+     unitree_g1 as unitree_g1_robot,
+ )
+ from lerobot.teleoperators import (  # noqa: F401
+@@ -139,6 +141,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     bi_openarm_mini,
+     bi_rebot_102_leader,
+     bi_so_leader,
++    bi_so102_leader,
+     homunculus,
+     koch_leader,
+     make_teleoperator_from_config,
+@@ -148,6 +151,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     reachy2_teleoperator,
+     rebot_102_leader,
+     so_leader,
++    so102_leader,
+     unitree_g1,
+ )
+ from lerobot.teleoperators.keyboard import KeyboardTeleop
+diff --git a/src/lerobot/scripts/lerobot_replay.py b/src/lerobot/scripts/lerobot_replay.py
+index 1851f7c..ceee234 100644
+--- a/src/lerobot/scripts/lerobot_replay.py
++++ b/src/lerobot/scripts/lerobot_replay.py
+@@ -58,6 +58,7 @@ from lerobot.robots import (  # noqa: F401
+     bi_openarm_follower,
+     bi_rebot_b601_follower,
+     bi_so_follower,
++    bi_so102_follower,
+     earthrover_mini_plus,
+     hope_jr,
+     koch_follower,
+@@ -67,6 +68,7 @@ from lerobot.robots import (  # noqa: F401
+     reachy2,
+     rebot_b601_follower,
+     so_follower,
++    so102_follower,
+     unitree_g1,
+ )
+ from lerobot.utils.constants import ACTION
+diff --git a/src/lerobot/scripts/lerobot_rollout.py b/src/lerobot/scripts/lerobot_rollout.py
+index 8790707..069ed37 100644
+--- a/src/lerobot/scripts/lerobot_rollout.py
++++ b/src/lerobot/scripts/lerobot_rollout.py
+@@ -162,6 +162,7 @@ from lerobot.robots import (  # noqa: F401
+     bi_openarm_follower,
+     bi_rebot_b601_follower,
+     bi_so_follower,
++    bi_so102_follower,
+     earthrover_mini_plus,
+     hope_jr,
+     koch_follower,
+@@ -170,6 +171,7 @@ from lerobot.robots import (  # noqa: F401
+     reachy2,
+     rebot_b601_follower,
+     so_follower,
++    so102_follower,
+     unitree_g1 as unitree_g1_robot,
+ )
+ from lerobot.rollout import RolloutConfig, build_rollout_context, create_strategy
+@@ -180,6 +182,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     bi_openarm_mini,
+     bi_rebot_102_leader,
+     bi_so_leader,
++    bi_so102_leader,
+     homunculus,
+     koch_leader,
+     omx_leader,
+@@ -188,6 +191,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     reachy2_teleoperator,
+     rebot_102_leader,
+     so_leader,
++    so102_leader,
+     unitree_g1,
+ )
+ from lerobot.utils.import_utils import register_third_party_plugins
+diff --git a/src/lerobot/scripts/lerobot_setup_motors.py b/src/lerobot/scripts/lerobot_setup_motors.py
+index f86c31a..d1e265e 100644
+--- a/src/lerobot/scripts/lerobot_setup_motors.py
++++ b/src/lerobot/scripts/lerobot_setup_motors.py
+@@ -32,24 +32,28 @@ from lerobot.robots import (  # noqa: F401
+     RobotConfig,
+     bi_rebot_b601_follower,
+     bi_so_follower,
++    bi_so102_follower,
+     koch_follower,
+     lekiwi,
+     make_robot_from_config,
+     omx_follower,
+     rebot_b601_follower,
+     so_follower,
++    so102_follower,
+ )
+ from lerobot.teleoperators import (  # noqa: F401
+     TeleoperatorConfig,
+     bi_openarm_mini,
+     bi_rebot_102_leader,
+     bi_so_leader,
++    bi_so102_leader,
+     koch_leader,
+     make_teleoperator_from_config,
+     omx_leader,
+     openarm_mini,
+     rebot_102_leader,
+     so_leader,
++    so102_leader,
+ )
+ 
+ COMPATIBLE_DEVICES = [
+diff --git a/src/lerobot/scripts/lerobot_teleoperate.py b/src/lerobot/scripts/lerobot_teleoperate.py
+index 30f1398..9cccc3b 100644
+--- a/src/lerobot/scripts/lerobot_teleoperate.py
++++ b/src/lerobot/scripts/lerobot_teleoperate.py
+@@ -90,6 +90,7 @@ from lerobot.robots import (  # noqa: F401
+     bi_openarm_follower,
+     bi_rebot_b601_follower,
+     bi_so_follower,
++    bi_so102_follower,
+     earthrover_mini_plus,
+     hope_jr,
+     koch_follower,
+@@ -99,6 +100,7 @@ from lerobot.robots import (  # noqa: F401
+     reachy2,
+     rebot_b601_follower,
+     so_follower,
++    so102_follower,
+     unitree_g1 as unitree_g1_robot,
+ )
+ from lerobot.teleoperators import (  # noqa: F401
+@@ -108,6 +110,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     bi_openarm_mini,
+     bi_rebot_102_leader,
+     bi_so_leader,
++    bi_so102_leader,
+     gamepad,
+     homunculus,
+     keyboard,
+@@ -119,6 +122,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     reachy2_teleoperator,
+     rebot_102_leader,
+     so_leader,
++    so102_leader,
+     unitree_g1,
+ )
+ from lerobot.utils.import_utils import register_third_party_plugins
+diff --git a/src/lerobot/teleoperators/__init__.py b/src/lerobot/teleoperators/__init__.py
+index d66e4b6..20ae0f1 100644
+--- a/src/lerobot/teleoperators/__init__.py
++++ b/src/lerobot/teleoperators/__init__.py
+@@ -19,3 +19,5 @@ from .teleoperator import Teleoperator
+ from .utils import TeleopEvents, make_teleoperator_from_config
+ 
+ __all__ = ["Teleoperator", "TeleoperatorConfig", "TeleopEvents", "make_teleoperator_from_config"]
++from . import so102_leader
++from . import bi_so102_leader
+diff --git a/src/lerobot/teleoperators/bi_so102_leader/__init__.py b/src/lerobot/teleoperators/bi_so102_leader/__init__.py
+new file mode 100644
+index 0000000..44946c7
+--- /dev/null
++++ b/src/lerobot/teleoperators/bi_so102_leader/__init__.py
+@@ -0,0 +1,4 @@
++from .bi_so102_leader import BiSO102Leader
++from .config_bi_so102_leader import BiSO102LeaderConfig
++
++__all__ = ["BiSO102Leader", "BiSO102LeaderConfig"]
+diff --git a/src/lerobot/teleoperators/bi_so102_leader/bi_so102_leader.py b/src/lerobot/teleoperators/bi_so102_leader/bi_so102_leader.py
+new file mode 100644
+index 0000000..78333e6
+--- /dev/null
++++ b/src/lerobot/teleoperators/bi_so102_leader/bi_so102_leader.py
+@@ -0,0 +1,71 @@
++import logging
++from functools import cached_property
++
++from lerobot.types import RobotAction
++from lerobot.utils.bimanual import BimanualMixin
++from lerobot.utils.decorators import check_if_not_connected
++
++from ..so102_leader import SO102Leader, SO102LeaderTeleopConfig
++from ..teleoperator import Teleoperator
++from .config_bi_so102_leader import BiSO102LeaderConfig
++
++logger = logging.getLogger(__name__)
++
++
++class BiSO102Leader(BimanualMixin, Teleoperator):
++    config_class = BiSO102LeaderConfig
++    name = "bi_so102_leader"
++
++    def __init__(self, config: BiSO102LeaderConfig):
++        super().__init__(config)
++        self.config = config
++
++        left_arm_config = SO102LeaderTeleopConfig(
++            id=f"{config.id}_left" if config.id else None,
++            calibration_dir=config.calibration_dir,
++            port=config.left_arm_config.port,
++            use_degrees=config.left_arm_config.use_degrees,
++        )
++
++        right_arm_config = SO102LeaderTeleopConfig(
++            id=f"{config.id}_right" if config.id else None,
++            calibration_dir=config.calibration_dir,
++            port=config.right_arm_config.port,
++            use_degrees=config.right_arm_config.use_degrees,
++        )
++
++        self.left_arm = SO102Leader(left_arm_config)
++        self.right_arm = SO102Leader(right_arm_config)
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        left_arm_features = self.left_arm.action_features
++        right_arm_features = self.right_arm.action_features
++
++        return {
++            **{f"left_{k}": v for k, v in left_arm_features.items()},
++            **{f"right_{k}": v for k, v in right_arm_features.items()},
++        }
++
++    @cached_property
++    def feedback_features(self) -> dict[str, type]:
++        return {}
++
++    def setup_motors(self) -> None:
++        self.left_arm.setup_motors()
++        self.right_arm.setup_motors()
++
++    @check_if_not_connected
++    def get_action(self) -> RobotAction:
++        action_dict = {}
++
++        left_action = self.left_arm.get_action()
++        action_dict.update({f"left_{key}": value for key, value in left_action.items()})
++
++        right_action = self.right_arm.get_action()
++        action_dict.update({f"right_{key}": value for key, value in right_action.items()})
++
++        return action_dict
++
++    def send_feedback(self, feedback: dict[str, float]) -> None:
++        raise NotImplementedError
+diff --git a/src/lerobot/teleoperators/bi_so102_leader/config_bi_so102_leader.py b/src/lerobot/teleoperators/bi_so102_leader/config_bi_so102_leader.py
+new file mode 100644
+index 0000000..b029da2
+--- /dev/null
++++ b/src/lerobot/teleoperators/bi_so102_leader/config_bi_so102_leader.py
+@@ -0,0 +1,11 @@
++from dataclasses import dataclass
++
++from ..config import TeleoperatorConfig
++from ..so102_leader.config_so102_leader import SO102LeaderConfig
++
++
++@TeleoperatorConfig.register_subclass("bi_so102_leader")
++@dataclass
++class BiSO102LeaderConfig(TeleoperatorConfig):
++    left_arm_config: SO102LeaderConfig
++    right_arm_config: SO102LeaderConfig
+diff --git a/src/lerobot/teleoperators/bi_so_leader/__init__.py b/src/lerobot/teleoperators/bi_so_leader/__init__.py
+index cf78beb..9f0435e 100644
+--- a/src/lerobot/teleoperators/bi_so_leader/__init__.py
++++ b/src/lerobot/teleoperators/bi_so_leader/__init__.py
+@@ -14,6 +14,8 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++from .bi_so_base_leader import BiSOBaseLeader
+ from .bi_so_leader import BiSOLeader, BiSOLeaderConfig
++from .config_bi_so_leader import BiSOBaseLeaderConfig
+ 
+-__all__ = ["BiSOLeader", "BiSOLeaderConfig"]
++__all__ = ["BiSOBaseLeader", "BiSOBaseLeaderConfig", "BiSOLeader", "BiSOLeaderConfig"]
+diff --git a/src/lerobot/teleoperators/bi_so_leader/bi_so_base_leader.py b/src/lerobot/teleoperators/bi_so_leader/bi_so_base_leader.py
+new file mode 100644
+index 0000000..6492885
+--- /dev/null
++++ b/src/lerobot/teleoperators/bi_so_leader/bi_so_base_leader.py
+@@ -0,0 +1,199 @@
++#!/usr/bin/env python
++
++# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Bimanual SO leader arms plus keyboard control of a 3-omniwheel base.
++
++`lerobot-record` and `lerobot-teleoperate` accept exactly one teleoperator on
++the command line, so driving the arms and the base at the same time needs them
++combined into a single device. This class holds a `BiSOLeader` and a
++`KeyboardTeleop`, and returns one 15-dimensional action:
++
++    left_*.pos (6) + right_*.pos (6) + x.vel, y.vel, theta.vel (3)
++
++Because the base velocities travel in the same action dict as the arm
++positions, they are recorded into the dataset like any other dimension.
++"""
++
++import logging
++import os
++from functools import cached_property
++from typing import Any
++
++from lerobot.teleoperators.keyboard import KeyboardTeleop
++from lerobot.teleoperators.keyboard.configuration_keyboard import KeyboardTeleopConfig
++from lerobot.types import RobotAction
++from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
++
++from ..teleoperator import Teleoperator
++from .bi_so_leader import BiSOLeader
++from .config_bi_so_leader import BiSOBaseLeaderConfig, BiSOLeaderConfig
++
++logger = logging.getLogger(__name__)
++
++# Set LEROBOT_DEBUG_KEYS=1 to log every keyboard poll.
++DEBUG_KEYS = os.environ.get("LEROBOT_DEBUG_KEYS") == "1"
++
++BASE_FEATURES = ("x.vel", "y.vel", "theta.vel")
++
++# Base speed presets, cycled with the speed_up / speed_down keys.
++SPEED_LEVELS = (
++    {"xy": 0.1, "theta": 30.0},
++    {"xy": 0.25, "theta": 60.0},
++    {"xy": 0.4, "theta": 90.0},
++)
++
++
++class BiSOBaseLeader(Teleoperator):
++    """Two SO leader arms and a keyboard, presented as one teleoperator."""
++
++    config_class = BiSOBaseLeaderConfig
++    name = "bi_so_base_leader"
++
++    def __init__(self, config: BiSOBaseLeaderConfig):
++        super().__init__(config)
++        self.config = config
++
++        self.arms = BiSOLeader(
++            BiSOLeaderConfig(
++                id=config.id,
++                calibration_dir=config.calibration_dir,
++                left_arm_config=config.left_arm_config,
++                right_arm_config=config.right_arm_config,
++            )
++        )
++        self.keyboard = KeyboardTeleop(KeyboardTeleopConfig(id=f"{config.id}_keyboard" if config.id else None))
++
++        self.teleop_keys = config.teleop_keys
++        self.speed_levels = SPEED_LEVELS
++        self.speed_index = 0
++
++        # The keyboard listener is global: anything typed anywhere reaches it,
++        # including a chat window or another terminal. Start locked so a stray
++        # "wasd" cannot drive the robot, and require an explicit toggle.
++        self.base_armed = not config.base_locked_on_start
++        self._arm_key = config.arm_key
++        self._arm_latch = False
++
++    # ── features ──────────────────────────────────────────────────────────
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        return {**self.arms.action_features, **dict.fromkeys(BASE_FEATURES, float)}
++
++    @cached_property
++    def feedback_features(self) -> dict[str, type]:
++        return {}
++
++    # ── lifecycle ─────────────────────────────────────────────────────────
++
++    @property
++    def is_connected(self) -> bool:
++        return self.arms.is_connected and self.keyboard.is_connected
++
++    @check_if_already_connected
++    def connect(self, calibrate: bool = True) -> None:
++        self.arms.connect(calibrate)
++        self.keyboard.connect()
++        logger.info(
++            "%s connected. Base keys: %s",
++            self,
++            ", ".join(f"{k}={v}" for k, v in self.teleop_keys.items()),
++        )
++        logger.info(
++            "Base is %s. Press '%s' to toggle.",
++            "ARMED" if self.base_armed else "LOCKED",
++            self._arm_key,
++        )
++
++    @property
++    def is_calibrated(self) -> bool:
++        return self.arms.is_calibrated
++
++    def calibrate(self) -> None:
++        self.arms.calibrate()
++
++    def configure(self) -> None:
++        self.arms.configure()
++        self.keyboard.configure()
++
++    @check_if_not_connected
++    def disconnect(self) -> None:
++        self.arms.disconnect()
++        self.keyboard.disconnect()
++
++    # ── data ──────────────────────────────────────────────────────────────
++
++    @check_if_not_connected
++    def get_action(self) -> RobotAction:
++        action = self.arms.get_action()
++        pressed = self.keyboard.get_action()
++        base = self._keys_to_base_action(pressed)
++        if DEBUG_KEYS:
++            logger.info(
++                "keyboard: listener_alive=%s pressed=%s -> %s",
++                self.keyboard.is_connected,
++                sorted(str(k) for k in pressed) or "-",
++                base,
++            )
++        action.update(base)
++        return action
++
++    def _keys_to_base_action(self, pressed_keys) -> dict[str, float]:
++        """Turn the currently pressed keys into body-frame base velocities.
++
++        Returns all zeros while the base is locked, so typing elsewhere cannot
++        move the robot.
++        """
++        # Toggle on the key's rising edge only, so holding it does not flap.
++        arm_held = self._arm_key in pressed_keys
++        if arm_held and not self._arm_latch:
++            self.base_armed = not self.base_armed
++            logger.info("Base %s", "ARMED" if self.base_armed else "LOCKED")
++        self._arm_latch = arm_held
++
++        if not self.base_armed:
++            return {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
++
++        if self.teleop_keys["speed_up"] in pressed_keys:
++            self.speed_index = min(self.speed_index + 1, len(self.speed_levels) - 1)
++        if self.teleop_keys["speed_down"] in pressed_keys:
++            self.speed_index = max(self.speed_index - 1, 0)
++
++        speed = self.speed_levels[self.speed_index]
++        xy_speed = speed["xy"]
++        theta_speed = speed["theta"]
++
++        x_cmd = 0.0  # m/s, forward positive
++        y_cmd = 0.0  # m/s, left positive
++        theta_cmd = 0.0  # deg/s, counter-clockwise positive
++
++        if self.teleop_keys["forward"] in pressed_keys:
++            x_cmd += xy_speed
++        if self.teleop_keys["backward"] in pressed_keys:
++            x_cmd -= xy_speed
++        if self.teleop_keys["left"] in pressed_keys:
++            y_cmd += xy_speed
++        if self.teleop_keys["right"] in pressed_keys:
++            y_cmd -= xy_speed
++        if self.teleop_keys["rotate_left"] in pressed_keys:
++            theta_cmd += theta_speed
++        if self.teleop_keys["rotate_right"] in pressed_keys:
++            theta_cmd -= theta_speed
++
++        return {"x.vel": x_cmd, "y.vel": y_cmd, "theta.vel": theta_cmd}
++
++    def send_feedback(self, feedback: dict[str, Any]) -> None:
++        pass
+diff --git a/src/lerobot/teleoperators/bi_so_leader/config_bi_so_leader.py b/src/lerobot/teleoperators/bi_so_leader/config_bi_so_leader.py
+index f477d0f..1be8605 100644
+--- a/src/lerobot/teleoperators/bi_so_leader/config_bi_so_leader.py
++++ b/src/lerobot/teleoperators/bi_so_leader/config_bi_so_leader.py
+@@ -14,7 +14,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
+ 
+ from ..config import TeleoperatorConfig
+ from ..so_leader import SOLeaderConfig
+@@ -27,3 +27,35 @@ class BiSOLeaderConfig(TeleoperatorConfig):
+ 
+     left_arm_config: SOLeaderConfig
+     right_arm_config: SOLeaderConfig
++
++
++@TeleoperatorConfig.register_subclass("bi_so_base_leader")
++@dataclass
++class BiSOBaseLeaderConfig(TeleoperatorConfig):
++    """Bimanual SO leader arms plus keyboard control of a 3-omniwheel base.
++
++    Returns one 15-dimensional action so that `lerobot-record` stores the base
++    velocities alongside the arm positions.
++    """
++
++    left_arm_config: SOLeaderConfig
++    right_arm_config: SOLeaderConfig
++
++    teleop_keys: dict[str, str] = field(
++        default_factory=lambda: {
++            "forward": "w",
++            "backward": "s",
++            "left": "a",
++            "right": "d",
++            "rotate_left": "q",
++            "rotate_right": "e",
++            "speed_up": "r",
++            "speed_down": "f",
++            "quit": "t",
++        }
++    )
++
++    # The keyboard listener is global, so anything typed anywhere reaches it.
++    # Start with the base locked and require an explicit key to enable it.
++    base_locked_on_start: bool = True
++    arm_key: str = "g"
+diff --git a/src/lerobot/teleoperators/so102_leader/__init__.py b/src/lerobot/teleoperators/so102_leader/__init__.py
+new file mode 100644
+index 0000000..88df9b2
+--- /dev/null
++++ b/src/lerobot/teleoperators/so102_leader/__init__.py
+@@ -0,0 +1,4 @@
++from .config_so102_leader import SO102LeaderConfig, SO102LeaderTeleopConfig
++from .so102_leader import SO102Leader
++
++__all__ = ["SO102Leader", "SO102LeaderConfig", "SO102LeaderTeleopConfig"]
+diff --git a/src/lerobot/teleoperators/so102_leader/config_so102_leader.py b/src/lerobot/teleoperators/so102_leader/config_so102_leader.py
+new file mode 100644
+index 0000000..f697cee
+--- /dev/null
++++ b/src/lerobot/teleoperators/so102_leader/config_so102_leader.py
+@@ -0,0 +1,16 @@
++from dataclasses import dataclass
++
++from ..config import TeleoperatorConfig
++
++
++@dataclass
++class SO102LeaderConfig:
++    port: str
++
++    use_degrees: bool = True
++
++
++@TeleoperatorConfig.register_subclass("so102_leader")
++@dataclass
++class SO102LeaderTeleopConfig(TeleoperatorConfig, SO102LeaderConfig):
++    pass
+diff --git a/src/lerobot/teleoperators/so102_leader/so102_leader.py b/src/lerobot/teleoperators/so102_leader/so102_leader.py
+new file mode 100644
+index 0000000..852af4a
+--- /dev/null
++++ b/src/lerobot/teleoperators/so102_leader/so102_leader.py
+@@ -0,0 +1,145 @@
++import logging
++import time
++
++from lerobot.motors import Motor, MotorCalibration, MotorNormMode
++from lerobot.motors.feetech import (
++    FeetechMotorsBus,
++    OperatingMode,
++)
++from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
++
++from ..teleoperator import Teleoperator
++from .config_so102_leader import SO102LeaderTeleopConfig
++
++logger = logging.getLogger(__name__)
++
++
++class SO102Leader(Teleoperator):
++    config_class = SO102LeaderTeleopConfig
++    name = "so102_leader"
++
++    def __init__(self, config: SO102LeaderTeleopConfig):
++        super().__init__(config)
++        self.config = config
++        norm_mode_body = MotorNormMode.DEGREES if config.use_degrees else MotorNormMode.RANGE_M100_100
++        self.bus = FeetechMotorsBus(
++            port=self.config.port,
++            motors={
++                "shoulder_pan": Motor(1, "sts3215", norm_mode_body),
++                "shoulder_lift": Motor(2, "sts3215", norm_mode_body),
++                "elbow_flex": Motor(3, "sts3215", norm_mode_body),
++                "wrist_flex": Motor(4, "sts3215", norm_mode_body),
++                "wrist_yaw": Motor(5, "sts3215", norm_mode_body),
++                "wrist_roll": Motor(6, "sts3215", norm_mode_body),
++                "gripper": Motor(7, "sts3215", MotorNormMode.RANGE_0_100),
++            },
++            calibration=self.calibration,
++        )
++
++    @property
++    def action_features(self) -> dict[str, type]:
++        return {f"{motor}.pos": float for motor in self.bus.motors}
++
++    @property
++    def feedback_features(self) -> dict[str, type]:
++        return self.action_features
++
++    @property
++    def is_connected(self) -> bool:
++        return self.bus.is_connected
++
++    @check_if_already_connected
++    def connect(self, calibrate: bool = True) -> None:
++        self.bus.connect()
++        if not self.is_calibrated and calibrate:
++            logger.info(
++                "Mismatch between calibration values in the motor and the calibration file or no calibration file found"
++            )
++            self.calibrate()
++
++        self.configure()
++        logger.info(f"{self} connected.")
++
++    @check_if_not_connected
++    def disconnect(self) -> None:
++        self.bus.disconnect()
++        logger.info(f"{self} disconnected.")
++
++    def configure(self) -> None:
++        self.bus.disable_torque()
++        self.bus.configure_motors()
++        for motor in self.bus.motors:
++            self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
++
++    def enable_torque(self) -> None:
++        self.bus.enable_torque()
++
++    def disable_torque(self) -> None:
++        self.bus.disable_torque()
++
++    def setup_motors(self) -> None:
++        for motor in reversed(self.bus.motors):
++            input(f"Connect the controller board to the '{motor}' motor only and press enter.")
++            self.bus.setup_motor(motor)
++            print(f"'{motor}' motor id set to {self.bus.motors[motor].id}")
++
++    @property
++    def is_calibrated(self) -> bool:
++        return self.bus.is_calibrated
++
++    def calibrate(self) -> None:
++        if self.calibration:
++            user_input = input(
++                f"Press ENTER to use provided calibration file associated with the id {self.id}, or type 'c' and press ENTER to run calibration: "
++            )
++            if user_input.strip().lower() != "c":
++                logger.info(f"Writing calibration file associated with the id {self.id} to the motors")
++                self.bus.write_calibration(self.calibration)
++                return
++
++        logger.info(f"\nRunning calibration of {self}")
++        self.bus.disable_torque()
++        for motor in self.bus.motors:
++            self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
++
++        input(f"Move {self} to the middle of its range of motion and press ENTER....")
++        homing_offsets = self.bus.set_half_turn_homings()
++
++        full_turn_motor = "wrist_roll"
++        unknown_range_motors = [motor for motor in self.bus.motors if motor != full_turn_motor]
++        print(
++            f"Move all joints except '{full_turn_motor}' sequentially through their "
++            "entire ranges of motion.\nRecording positions. Press ENTER to stop..."
++        )
++        range_mins, range_maxes = self.bus.record_ranges_of_motion(unknown_range_motors)
++        range_mins[full_turn_motor] = 0
++        range_maxes[full_turn_motor] = 4095
++
++        self.calibration = {}
++        for motor, m in self.bus.motors.items():
++            self.calibration[motor] = MotorCalibration(
++                id=m.id,
++                drive_mode=0,
++                homing_offset=homing_offsets[motor],
++                range_min=range_mins[motor],
++                range_max=range_maxes[motor],
++            )
++
++        self.bus.write_calibration(self.calibration)
++        self._save_calibration()
++        print(f"Calibration saved to {self.calibration_fpath}")
++
++    @check_if_not_connected
++    def get_action(self) -> dict[str, float]:
++        start = time.perf_counter()
++        action = self.bus.sync_read("Present_Position")
++        action = {f"{motor}.pos": val for motor, val in action.items()}
++        dt_ms = (time.perf_counter() - start) * 1e3
++        logger.debug(f"{self} read action: {dt_ms:.1f}ms")
++        return action
++
++    @check_if_not_connected
++    def send_feedback(self, feedback: dict[str, float]) -> None:
++        goals = {k.removesuffix(".pos"): v for k, v in feedback.items() if k.endswith(".pos")}
++        if goals:
++            self.bus.sync_write("Goal_Position", goals)
+diff --git a/src/lerobot/teleoperators/utils.py b/src/lerobot/teleoperators/utils.py
+index 0f0eaf0..f578ca9 100644
+--- a/src/lerobot/teleoperators/utils.py
++++ b/src/lerobot/teleoperators/utils.py
+@@ -79,6 +79,10 @@ def make_teleoperator_from_config(config: TeleoperatorConfig) -> "Teleoperator":
+         from .unitree_g1 import UnitreeG1Teleoperator
+ 
+         return UnitreeG1Teleoperator(config)
++    elif config.type == "bi_so_base_leader":
++        from .bi_so_leader import BiSOBaseLeader
++
++        return BiSOBaseLeader(config)
+     elif config.type == "bi_so_leader":
+         from .bi_so_leader import BiSOLeader
+ 
+@@ -111,6 +115,14 @@ def make_teleoperator_from_config(config: TeleoperatorConfig) -> "Teleoperator":
+         from .bi_rebot_102_leader import BiRebot102Leader
+ 
+         return BiRebot102Leader(config)
++    elif config.type == "so102_leader":
++        from .so102_leader import SO102Leader
++
++        return SO102Leader(config)
++    elif config.type == "bi_so102_leader":
++        from .bi_so102_leader import BiSO102Leader
++
++        return BiSO102Leader(config)
+     else:
+         try:
+             return cast("Teleoperator", make_device_from_device_class(config))
