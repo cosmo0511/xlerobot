@@ -20,18 +20,21 @@ arms:
   right_port: "/dev/ttyACM1"    # 오른팔 follower
   id: "home_bi"                 # 캘리브레이션 파일 이름
 
-  # 카메라 이름 규칙 (bi_so_follower 의 동작):
-  #   top_cameras  에 적은 이름은 그대로  ->  "top"
-  #   left_cameras 에 적은 이름은 left_ 접두사가 붙음  ->  "wrist" -> "left_wrist"
-  #   right_cameras 도 마찬가지            ->  "wrist" -> "right_wrist"
-  # 최종 관측 키가 observation.images.top / .left_wrist / .right_wrist 가 됩니다.
-  # 이 이름은 데모 수집 때와 **글자까지 같아야** 합니다.
-  top_cameras:
-    top:   {index_or_path: "/dev/video0", width: 640, height: 480, fps: 30}
-  left_cameras:
-    wrist: {index_or_path: "/dev/video2", width: 640, height: 480, fps: 30}
-  right_cameras:
-    wrist: {index_or_path: "/dev/video4", width: 640, height: 480, fps: 30}
+  # --- 카메라 구성 ---------------------------------------------------------
+  # 카메라 목록은 config/cameras.<이름>.yaml 에 있습니다.
+  # 녹화(scripts/record.sh)와 추론(src/arm_node.py)이 **같은 파일**을 읽으므로
+  # 카메라 이름이 어긋날 수 없습니다. 전에는 두 곳에 손으로 적어뒀습니다.
+  #
+  #   3cam  탑캠 + 손목캠 x2            (현재 운용 구성)
+  #   4cam  탑캠 + 베이스캠 + 손목캠 x2  (비교 실험용)
+  #
+  # 목록 확인:  python src/camera_config.py
+  # 장치 확인:  python src/camera_config.py 3cam --check
+  #
+  # ⚠️ 여기를 바꾸면 **학습된 정책과 카메라 구성이 달라집니다.**
+  #    정책은 학습 때 본 이미지 키만 받습니다. 4cam 으로 모은 데이터로
+  #    학습한 뒤에만 4cam 으로 바꾸세요. 안 맞으면 팔이 아예 안 움직입니다.
+  camera_set: "3cam"
 
   # 주행 중 팔 자세(파킹 포즈).
   # Pi 가 둘이라 주행과 조작은 별개 하드웨어지만, 이동 중 팔이 벌어져 있으면

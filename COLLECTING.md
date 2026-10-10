@@ -162,8 +162,23 @@ lerobot-find-joint-limits --robot.type=so101_follower --robot.port=/dev/ttyACM0
 
 ## 6. 녹화 — 스크립트로
 
-명령이 길어서 스크립트로 만들어뒀습니다. **`scripts/record.sh` 위쪽의 설정만**
-실제 포트·카메라에 맞게 고치고, 그 뒤로는 건드리지 마세요.
+명령이 길어서 스크립트로 만들어뒀습니다. **`scripts/record.sh` 위쪽의 포트 설정과
+`config/cameras.<이름>.yaml` 만** 실제 환경에 맞게 고치고, 그 뒤로는 건드리지 마세요.
+
+카메라는 `record.sh` 에 안 적혀 있습니다. `config/cameras.3cam.yaml` 에 있고,
+추론(`src/arm_node.py`)도 같은 파일을 읽습니다 — 그래서 "녹화 때와 추론 때 카메라
+이름이 달라서 팔이 안 움직이는" 문제가 안 생깁니다. 찍기 전에 확인하세요:
+
+```bash
+python src/camera_config.py 3cam --check
+```
+
+카메라 구성을 바꿔서 찍으려면 (데이터셋이 자동으로 분리됩니다):
+
+```bash
+CAMERA_SET=4cam ./scripts/record.sh pick_red 40 --first
+#   -> 데이터셋 xlerobot-dice-4cam  (3cam 데이터와 섞이지 않습니다)
+```
 
 ```bash
 export HF_USER=여러분_허깅페이스_아이디
@@ -188,6 +203,12 @@ chmod +x scripts/record.sh
 <details>
 <summary>스크립트 없이 직접 치려면 (예: place_red)</summary>
 
+카메라 인자는 손으로 적지 말고 설정에서 생성하세요. 그래야 추론 때와 어긋나지 않습니다.
+
+```bash
+mapfile -t CAM_ARGS < <(python3 src/camera_config.py 3cam --record-args)
+```
+
 ```bash
 lerobot-record \
   --robot.type=bi_so_follower \
@@ -196,16 +217,14 @@ lerobot-record \
   --robot.left_arm_config.id=home_bi_left \
   --robot.right_arm_config.port=/dev/ttyACM1 \
   --robot.right_arm_config.id=home_bi_right \
-  --robot.cameras='{ top: {"type":"opencv","index_or_path":"/dev/video0","width":640,"height":480,"fps":30} }' \
-  --robot.left_arm_config.cameras='{ wrist: {"type":"opencv","index_or_path":"/dev/video2","width":640,"height":480,"fps":30} }' \
-  --robot.right_arm_config.cameras='{ wrist: {"type":"opencv","index_or_path":"/dev/video4","width":640,"height":480,"fps":30} }' \
+  "${CAM_ARGS[@]}" \
   --teleop.type=bi_so_leader \
   --teleop.id=home_bi_leader \
   --teleop.left_arm_config.port=/dev/ttyACM2 \
   --teleop.left_arm_config.id=home_bi_leader_left \
   --teleop.right_arm_config.port=/dev/ttyACM3 \
   --teleop.right_arm_config.id=home_bi_leader_right \
-  --dataset.repo_id=$HF_USER/xlerobot-dice \
+  --dataset.repo_id=$HF_USER/xlerobot-dice-3cam \
   --dataset.single_task="Place the dice on the red spot" \
   --dataset.num_episodes=40 \
   --dataset.episode_time_s=25 \
@@ -319,7 +338,7 @@ lerobot-dataset-viz --repo-id=$HF_USER/xlerobot-dice
 
 볼 것:
 
-- 카메라 3개가 다 제대로 찍혔나
+- 카메라가 구성대로 다 제대로 찍혔나 (`python src/camera_config.py <구성>` 의 키와 대조)
 - **에피소드마다 세 색의 자리가 바뀌어 있나** (규칙 2 지켜졌나)
 - **1단계 마지막 프레임과 2단계 첫 프레임의 팔 자세가 비슷한가**
 - 지시문과 실제 집은 색이 다른 에피소드가 없나
@@ -335,7 +354,7 @@ lerobot-edit-dataset --repo-id=$HF_USER/xlerobot-dice --delete-episodes="3,17"
 ```bash
 lerobot-train \
   --policy.path=lerobot/smolvla_base \
-  --dataset.repo_id=$HF_USER/xlerobot-dice \
+  --dataset.repo_id=$HF_USER/xlerobot-dice-3cam \
   --batch_size=64 \
   --steps=40000 \
   --output_dir=outputs/train/smolvla_dice \
@@ -390,7 +409,7 @@ python src/main.py --dry-run --once "빨간 거 가져와"
 | **색을 무시하고 아무거나 집음** | 한 색만 놓고 찍었음 (규칙 1) | 세 색 다 놓고 재수집 |
 | **항상 같은 자리 것만 집음** | 색과 위치가 고정돼 있었음 (규칙 2) | 자리를 섞어서 재수집 |
 | 빨강만 되고 파랑은 안 됨 | 파랑 데이터가 적거나 조명에서 구분이 안 됨 | 파랑 에피소드 추가, 조명 확인 |
-| 팔이 아예 안 움직임 | 카메라 이름이 녹화 때와 다름 | 녹화 명령과 글자 단위로 대조 |
+| 팔이 아예 안 움직임 | 카메라 이름이 녹화 때와 다름 | `python src/camera_config.py <구성> --keys` 를 학습 때 쓴 구성과 대조 |
 | 각 단계는 되는데 이어붙이면 실패 | 1단계 끝 자세 ≠ 2단계 시작 자세 | dataset-viz 로 두 자세 비교 |
 | 이동 중 주사위를 떨어뜨림 | 파킹 자세가 못 잡아둠 | `travel_pose` 를 그리퍼가 위를 보게 |
 | 2단계에서 빈 손처럼 행동 | 2단계 데모를 빈 손으로 찍음 | 주사위 쥔 상태로 재수집 |

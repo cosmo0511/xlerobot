@@ -5,7 +5,8 @@ arm_node.py — 🦾 Pi-A(양팔 라즈베리파이)에서 상시 실행하는 �
 
 ■ 이 파일이 하는 일
 ---------------------------------------------------------------------------
-1. 양팔(bi_so_follower) + 카메라 3개를 USB 로 직접 엽니다. Pi-A 가 팔의 유일한 주인입니다.
+1. 양팔(bi_so_follower) + 카메라를 USB 로 직접 엽니다. Pi-A 가 팔의 유일한 주인입니다.
+   카메라 목록은 robot.yaml 의 arms.camera_set -> config/cameras.<이름>.yaml.
 2. 💻 GPU PC 의 SmolVLA 추론 서버에 gRPC 로 붙습니다 (lerobot async inference).
 3. 에이전트(PC)가 보내는 명령을 ZMQ 로 받아서 처리합니다.
 
@@ -56,6 +57,12 @@ import zmq
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from camera_config import (  # noqa: E402  (sys.path 조정 뒤라서)
+    missing_devices,
+    observation_keys,
+    resolve_cameras,
+)
+
 logger = logging.getLogger("arm_node")
 
 
@@ -63,10 +70,27 @@ logger = logging.getLogger("arm_node")
 # 로봇 + 정책 클라이언트
 # =============================================================================
 def build_robot_config(arms_cfg: dict):
-    """robot.yaml 의 arms 블록 -> BiSOFollowerConfig"""
+    """robot.yaml 의 arms 블록 -> BiSOFollowerConfig
+
+    카메라는 arms.camera_set 이 가리키는 config/cameras.<이름>.yaml 에서 옵니다.
+    **녹화(scripts/record.sh)와 같은 파일**이라서 카메라 이름이 어긋날 수 없습니다.
+    """
     from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
     from lerobot.robots.bi_so_follower import BiSOFollowerConfig
     from lerobot.robots.so_follower import SOFollowerConfig
+
+    cam_cfg = resolve_cameras(arms_cfg)
+    logger.info("카메라 구성 %s — 관측 키: %s",
+                arms_cfg.get("camera_set", "(robot.yaml 인라인)"),
+                ", ".join(observation_keys(cam_cfg)))
+
+    absent = missing_devices(cam_cfg)
+    if absent:
+        raise RuntimeError(
+            f"카메라 장치가 없습니다: {', '.join(absent)}\n"
+            "lerobot-find-cameras 로 실제 인덱스를 확인하고 "
+            f"config/cameras.{arms_cfg.get('camera_set')}.yaml 을 고치세요."
+        )
 
     def cams(block: dict | None) -> dict:
         return {
@@ -83,15 +107,15 @@ def build_robot_config(arms_cfg: dict):
         left_arm_config=SOFollowerConfig(
             port=arms_cfg["left_port"],
             id=f"{arms_cfg['id']}_left",
-            cameras=cams(arms_cfg.get("left_cameras")),
+            cameras=cams(cam_cfg.get("left_cameras")),
         ),
         right_arm_config=SOFollowerConfig(
             port=arms_cfg["right_port"],
             id=f"{arms_cfg['id']}_right",
-            cameras=cams(arms_cfg.get("right_cameras")),
+            cameras=cams(cam_cfg.get("right_cameras")),
         ),
-        # 팔에 안 묶인 카메라(탑캠)는 여기. 이름에 접두사가 안 붙습니다.
-        cameras=cams(arms_cfg.get("top_cameras")),
+        # 팔에 안 묶인 카메라(탑캠·베이스캠)는 여기. 이름에 접두사가 안 붙습니다.
+        cameras=cams(cam_cfg.get("top_cameras")),
         id=arms_cfg["id"],
     )
 

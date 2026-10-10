@@ -10,7 +10,8 @@
 🦾 Pi-A  양팔 라즈베리파이
          SO-101 팔로워 x2 (USB 직결)
          리더암 x2 (데모 수집용)
-         카메라 3개 — 탑캠 + 손목캠 x2
+         카메라 — 구성은 config/cameras.<이름>.yaml
+           3cam: 탑캠 + 손목캠 x2   /   4cam: + 베이스캠
 
 🛞 Pi-B  르키위 라즈베리파이
          옴니휠 베이스 + 라이다
@@ -124,14 +125,36 @@ tasks:
 
 `bi_so_follower` 는 카메라 이름에 접두사를 자동으로 붙입니다.
 
-| robot.yaml 에 적는 곳 | 적는 이름 | 최종 관측 키 |
+| 구성 파일에 적는 곳 | 적는 이름 | 최종 관측 키 |
 |---|---|---|
 | `top_cameras` | `top` | `observation.images.top` |
+| `top_cameras` | `base` | `observation.images.base` |
 | `left_cameras` | `wrist` | `observation.images.left_wrist` |
 | `right_cameras` | `wrist` | `observation.images.right_wrist` |
 
-팔에 묶인 카메라는 `left_` / `right_` 가 붙고, 탑캠처럼 팔에 안 묶인 건 그대로입니다.
+팔에 묶인 카메라는 `left_` / `right_` 가 붙고, 팔에 안 묶인 건(탑캠·베이스캠)
+그대로입니다. `top_cameras` 라는 이름이 혼동스럽지만 "로봇 몸체에 달린 카메라"
+라는 뜻이라, 베이스캠도 여기 들어갑니다.
+
 **이 최종 키가 데모 수집 때와 같아야** SmolVLA 가 이미지를 찾습니다.
+다르면 정책이 행동을 하나도 못 내놓고 팔이 가만히 있습니다.
+
+### 그래서 카메라 설정은 한 곳에만 둡니다
+
+전에는 같은 이름을 두 곳에 손으로 적어뒀습니다 — `scripts/record.sh`(녹화)와
+`config/robot.yaml`(추론). 한쪽만 고치면 그때부터 조용히 어긋납니다.
+
+지금은 둘 다 `config/cameras.<이름>.yaml` 하나를 읽습니다:
+
+```
+config/cameras.3cam.yaml ──┬── scripts/record.sh   (녹화)
+                           └── src/arm_node.py     (추론)
+                                 ↑ 둘 다 src/camera_config.py 경유
+```
+
+운용 구성은 `robot.yaml` 의 `arms.camera_set` 이, 녹화 구성은 환경변수
+`CAMERA_SET` 이 정합니다. 구성을 늘리려면 yaml 파일을 하나 더 만들면 됩니다 —
+**브랜치를 나누지 마세요.** 코드는 한 벌이고 설정만 여러 벌입니다.
 
 ---
 
@@ -165,7 +188,9 @@ tasks:
 | 파일 | 도는 곳 | 하는 일 |
 |---|---|---|
 | `config/tasks.yaml` | — | 태스크·위치·좌표 정의 |
-| `config/robot.yaml` | — | IP·포트·카메라·파킹 자세 |
+| `config/robot.yaml` | — | IP·포트·파킹 자세 + 쓸 카메라 구성 이름 |
+| `config/cameras.*.yaml` | — | 카메라 목록 (녹화·추론 공용 단일 진실 소스) |
+| `src/camera_config.py` | 🦾 Pi-A | 카메라 설정 로더 + 장치 검사 |
 | `src/arm_node.py` | 🦾 Pi-A | 팔 소유, 30Hz 제어, ZMQ 명령 수신 |
 | `src/policy_client.py` | 💻 PC | Pi-A 에 명령 보내는 얇은 클라이언트 |
 | `src/navigation.py` | 💻 PC | Nav2 목표 전송, 도착 대기 |

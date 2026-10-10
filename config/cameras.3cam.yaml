@@ -1,0 +1,28 @@
+# =============================================================================
+# cameras.3cam.yaml — 탑캠 + 손목캠 x2  (현재 기본 구성)
+# =============================================================================
+# 최종 관측 키:
+#   observation.images.top
+#   observation.images.left_wrist
+#   observation.images.right_wrist
+#
+# 이 파일은 **녹화(scripts/record.sh)와 추론(src/arm_node.py)이 함께 읽습니다.**
+# 그래서 둘의 카메라 이름이 어긋날 수 없습니다.
+#
+# 확인:  python src/camera_config.py 3cam --check
+#
+# ⚠️ 데이터를 한 번 찍기 시작하면 이 파일을 고치지 마세요.
+#    화각·해상도·fps 를 바꾸면 그때까지 모은 데이터와 섞일 수 없습니다.
+#    다른 구성을 시험하려면 cameras.<새이름>.yaml 을 새로 만드세요.
+
+# --- 팔에 안 묶인 카메라 (이름에 접두사가 안 붙습니다) ------------------------
+top_cameras:
+  top:   {index_or_path: "/dev/video0", width: 640, height: 480, fps: 30}
+
+# --- 왼팔에 묶인 카메라 (left_ 접두사가 자동으로 붙습니다) --------------------
+left_cameras:
+  wrist: {index_or_path: "/dev/video2", width: 640, height: 480, fps: 30}
+
+# --- 오른팔에 묶인 카메라 (right_ 접두사) -------------------------------------
+right_cameras:
+  wrist: {index_or_path: "/dev/video4", width: 640, height: 480, fps: 30}

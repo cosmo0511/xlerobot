@@ -40,7 +40,7 @@ export GEMINI_API_KEY="새로_발급받은_키"    # ⚠️ 소스에 절대 쓰
 
 ```bash
 lerobot-find-port        # 팔로워 2개 포트
-lerobot-find-cameras     # 카메라 3개 인덱스
+lerobot-find-cameras     # 카메라 인덱스 (구성에 적힌 개수만큼)
 ```
 
 ### 캘리브레이션 (처음 한 번)
@@ -57,17 +57,33 @@ arms:
   control_address: "tcp://192.168.0.101:5580"   # Pi-A 의 IP
   left_port:  "/dev/ttyACM0"
   right_port: "/dev/ttyACM1"
-  top_cameras:
-    top:   {index_or_path: "/dev/video0", ...}
-  left_cameras:
-    wrist: {index_or_path: "/dev/video2", ...}   # → left_wrist 가 됨
-  right_cameras:
-    wrist: {index_or_path: "/dev/video4", ...}   # → right_wrist 가 됨
+  camera_set: "3cam"        # ← 카메라는 여기 안 적습니다
+```
+
+### 카메라는 `config/cameras.<이름>.yaml` 에 채우기
+
+```yaml
+# config/cameras.3cam.yaml
+top_cameras:
+  top:   {index_or_path: "/dev/video0", width: 640, height: 480, fps: 30}
+left_cameras:
+  wrist: {index_or_path: "/dev/video2", width: 640, height: 480, fps: 30}  # → left_wrist
+right_cameras:
+  wrist: {index_or_path: "/dev/video4", width: 640, height: 480, fps: 30}  # → right_wrist
+```
+
+채운 뒤 바로 확인하세요:
+
+```bash
+python src/camera_config.py              # 쓸 수 있는 구성 목록
+python src/camera_config.py 3cam --check # 장치가 실제로 있는지
 ```
 
 > ⚠️ 최종 관측 키는 `top` / `left_wrist` / `right_wrist` 입니다. 팔에 묶인 카메라는
 > 접두사가 자동으로 붙습니다. **이 이름이 2단계 데모 수집 때와 같아야** 합니다.
-> 지금 정하고 끝까지 바꾸지 마세요.
+> 이 파일을 녹화(`record.sh`)와 추론(`arm_node.py`)이 **같이 읽으므로** 어긋날
+> 일은 없지만, 데이터를 찍기 시작한 뒤에는 파일 자체를 고치지 마세요.
+> 다른 구성을 시험하려면 `cameras.<새이름>.yaml` 을 새로 만드세요.
 
 ### 파킹 자세 값 찾기
 
@@ -88,15 +104,19 @@ lerobot-find-joint-limits --robot.type=so101_follower --robot.port=/dev/ttyACM0
 태스크 **하나당** 한 번씩, 총 5번. `--dataset.single_task` 값은
 `config/tasks.yaml` 의 `prompt` 와 **글자까지 동일**해야 합니다.
 
+카메라 인자는 손으로 적지 말고 설정에서 생성하세요. 그래야 추론 때와 어긋나지 않습니다.
+
+```bash
+mapfile -t CAM_ARGS < <(python3 src/camera_config.py 3cam --record-args)
+```
+
 ```bash
 lerobot-record \
   --robot.type=bi_so_follower \
   --robot.left_arm_config.port=/dev/ttyACM0 \
   --robot.right_arm_config.port=/dev/ttyACM1 \
   --robot.id=home_bi \
-  --robot.cameras='{ top: {"type":"opencv","index_or_path":"/dev/video0","width":640,"height":480,"fps":30} }' \
-  --robot.left_arm_config.cameras='{ wrist: {"type":"opencv","index_or_path":"/dev/video2","width":640,"height":480,"fps":30} }' \
-  --robot.right_arm_config.cameras='{ wrist: {"type":"opencv","index_or_path":"/dev/video4","width":640,"height":480,"fps":30} }' \
+  "${CAM_ARGS[@]}" \
   --teleop.type=bi_so_leader \
   --teleop.left_arm_config.port=/dev/ttyACM2 \
   --teleop.right_arm_config.port=/dev/ttyACM3 \
