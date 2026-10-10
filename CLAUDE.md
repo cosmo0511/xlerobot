@@ -94,11 +94,59 @@ python src/camera_config.py 4cam --record-args --robot-type=xlerobot  # flat
 ## 아직 안 정해진 것 / 확인 필요
 
 - **4cam 이 실제로 돌아가는지** — 카메라 4개를 동시에 열 수 있는지 확인 필요.
-- **텔레옵을 `xlerobot` 으로 돌렸는지, `xlerobot_client` 로 돌렸는지.**
-  전자는 라즈베리파이에서 다 돌리는 것, 후자는 파이에서 `xlerobot_host` 를 띄우고
-  PC 가 ZMQ(5555/5556)로 붙는 것입니다. 우리 구성(PC ←무선→ 파이)은 후자처럼
-  보이지만 확인이 필요합니다. 액션 공간은 둘이 같고 포트/IP 플래그만 다릅니다.
-- **`record.sh` 를 `xlerobot` 으로 바꾸는 작업** — 위 표의 항목들을 같이 고쳐야 합니다.
+- **지금 돌아가는 녹화 설정이 레포에 없습니다.** 가상환경(site-packages) 안의
+  파일을 고쳐서 쓰고 있습니다 (카메라 3개 버전). 아래 "가장 급한 것" 참고.
+- **`record.sh` 를 `xlerobot_client` 로 바꾸는 작업** — 위 표의 항목들을 같이 고쳐야 합니다.
+
+## 텔레옵 구성 (확인됨)
+
+- **방식 (B)**: 리더암으로 양팔 + **키보드로 바퀴**.
+- 라즈베리파이에서 `xlerobot_host` 를 띄우고 PC 가 붙습니다.
+  → 녹화 쪽 로봇 타입은 `xlerobot` 이 아니라 **`xlerobot_client`** 이고
+    `remote_ip` (파이의 IP) 가 필요합니다. ZMQ 포트 5555(명령) / 5556(관측).
+
+## 🔴 가장 급한 것 — 녹화 설정이 레포 밖에 있습니다
+
+지금 돌아가는 3카메라 녹화 설정은 **가상환경 안의 파일을 직접 고친 것**입니다.
+이건 두 가지로 위험합니다:
+
+1. **팀원이 볼 수 없습니다.** 레포를 clone 해도 그 수정은 안 따라옵니다.
+2. **`pip install -U` 한 번에 날아갑니다.** 재현도 안 됩니다.
+
+마감 2주에 이게 제일 큰 리스크입니다. 그 파일을 레포 안으로 옮기는 게
+다음 작업입니다.
+
+### 왜 단순 복사가 아닌가 — 상류 `record.py` 의 멀티 텔레옵 제약 3개
+
+리더암 + 키보드를 같이 쓰는 경로(`record_loop` 의 `isinstance(teleop, list)` 분기)에
+`xlerobot` 과 안 맞는 데가 세 군데 있습니다:
+
+```python
+# 1. 로봇 이름 게이트 — xlerobot_client 는 통과 못 함
+if not (... and robot.name == "lekiwi_client"):
+    raise ValueError("... Currently only supported for LeKiwi robot.")
+
+# 2. 리더암 클래스 목록 — 양팔 리더는 여기 없음
+teleop_arm = next((t for t in teleop if isinstance(
+    t, (so100_leader.SO100Leader, so101_leader.SO101Leader,
+        koch_leader.KochLeader))), None)
+
+# 3. 액션 키 접두사 — LeKiwi(팔 1개) 기준
+arm_action = {f"arm_{k}": v for k, v in arm_action.items()}
+#   LeKiwi    : arm_shoulder_pan.pos
+#   xlerobot  : left_arm_shoulder_pan.pos / right_arm_shoulder_pan.pos
+#   -> 그냥 쓰면 키가 안 맞습니다
+```
+
+지금 설정이 3카메라로 **돌아가고 있다**는 건 이 세 개를 이미 어떤 식으로든
+해결했다는 뜻입니다. 그래서 새로 쓰지 말고 **그 파일을 가져와서 레포에 넣어야**
+합니다.
+
+### 참고: 상류는 포크된 lerobot 을 전제합니다
+
+`software/src/record.py` 가 `from lerobot.robots import xlerobot` 로 임포트합니다.
+플러그인 설치 방식(`register_third_party_plugins`)과 섞여 있어서, 어느 쪽으로
+설치돼 있는지에 따라 임포트 경로가 다릅니다. 실제 환경 기준으로 맞춰야 합니다.
 
 ## 팀 작업 규칙
 
