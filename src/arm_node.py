@@ -63,6 +63,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from camera_config import (  # noqa: E402  (sys.path 조정 뒤라서)
+    camera_kwargs,
     flat_cameras,
     observation_keys,
     resolve_cameras,
@@ -107,12 +108,7 @@ def build_robot_config(arms_cfg: dict):
     # 클라이언트는 이 이름으로 파이가 보낸 프레임을 받습니다 (flat 레이아웃).
     # index_or_path 는 클라이언트에서 안 쓰지만 설정 형식상 필요합니다.
     cameras = {
-        name: OpenCVCameraConfig(
-            index_or_path=c["index_or_path"],
-            width=c.get("width", 640),
-            height=c.get("height", 480),
-            fps=c.get("fps", 30),
-        )
+        name: OpenCVCameraConfig(**camera_kwargs(c))
         for name, c in flat_cameras(cam_cfg).items()
     }
 

@@ -56,6 +56,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from camera_config import (  # noqa: E402
     CameraConfigError,
+    camera_kwargs,
     dataset_fps,
     flat_cameras,
     list_camera_sets,
@@ -291,7 +292,8 @@ class CamStats:
     unique: int = 0                # 그중 **새** 프레임 (멈춘 화면 판정용)
     placeholder: int = 0           # 전부 0 (= 안 온 프레임)
     dark: int = 0                  # 거의 검정
-    fourcc: str = ""
+    fourcc: str = ""           # 실제로 열린 포맷
+    want_fourcc: str = ""      # 설정이 요청한 포맷
     size: tuple[int, int] = (0, 0)
     jpeg_samples: list[int] = field(default_factory=list)
     _last: bytes | None = None
@@ -350,8 +352,12 @@ def probe_local(cams: dict, seconds: float) -> tuple[dict[str, CamStats], float]
         device = spec["index_or_path"]
         cap = (cv2.VideoCapture(device, cv2.CAP_V4L2) if isinstance(device, str)
                else cv2.VideoCapture(int(device)))
-        # 순서가 중요합니다: FOURCC 를 먼저 박아야 해상도 협상이 MJPEG 기준으로 갑니다.
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        # 순서가 중요합니다: FOURCC 를 먼저 박아야 해상도 협상이 그 포맷 기준으로 갑니다.
+        # **설정의 fourcc 를 그대로 씁니다.** 여기서만 MJPG 를 강제하면, 이 검사는
+        # 통과하는데 정작 lerobot 은 YUYV 로 열어서 죽는 상황이 생깁니다
+        # (실제로 그랬습니다 — host.sh 가 두 번째 카메라에서 타임아웃).
+        want_fourcc = camera_kwargs(spec)["fourcc"]
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*want_fourcc))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, spec.get("width", 640))
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, spec.get("height", 480))
         cap.set(cv2.CAP_PROP_FPS, spec.get("fps", 30))
@@ -361,6 +367,7 @@ def probe_local(cams: dict, seconds: float) -> tuple[dict[str, CamStats], float]
             cap.release()
             continue
         stats[name].fourcc = fourcc_str(cap.get(cv2.CAP_PROP_FOURCC))
+        stats[name].want_fourcc = want_fourcc
         caps[name] = cap
 
     if not caps:
@@ -414,12 +421,7 @@ def probe_remote(cams: dict, remote_ip: str, seconds: float
     cfg = BiSOBaseClientConfig(
         remote_ip=remote_ip,
         cameras={
-            name: OpenCVCameraConfig(
-                index_or_path=spec["index_or_path"],
-                width=spec.get("width", 640),
-                height=spec.get("height", 480),
-                fps=spec.get("fps", 30),
-            )
+            name: OpenCVCameraConfig(**camera_kwargs(spec))
             for name, spec in cams.items()
         },
     )
@@ -486,11 +488,11 @@ def judge(stats: dict[str, CamStats], elapsed: float, want_fps: int,
                 "무선 대역폭이 모자랍니다. LEROBOT_JPEG_QUALITY 를 낮추거나 "
                 "yaml 의 fps 를 낮추세요."))
 
-        if local and s.fourcc and s.fourcc != "MJPG":
+        if local and s.fourcc and s.fourcc != s.want_fourcc:
             problems.append(Problem(
-                name, f"MJPEG 이 아니라 {s.fourcc} 로 열렸습니다",
-                "raw 포맷은 USB 대역폭을 몇 배로 먹습니다. 이 카메라가 MJPG 를 "
-                "지원하는지 --list 로 확인하세요."))
+                name, f"{s.want_fourcc} 로 요청했는데 {s.fourcc} 로 열렸습니다",
+                "raw(YUYV) 포맷은 USB 대역폭을 몇 배로 먹어서 4대가 못 들어갑니다. "
+                "이 카메라가 MJPG 를 지원하는지 scan 으로 확인하세요."))
 
         if s.dark == s.unique and s.unique > 0:
             problems.append(Problem(

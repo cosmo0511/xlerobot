@@ -329,6 +329,35 @@ assert "SKIP_CHECK" in r4code, "record 앞에 카메라 검증이 없습니다"
 ok("run_4cam.sh 가 CAMERA_SET=4cam 을 한 곳에서 박고, 녹화 전에 검증을 돌림")
 
 
+# --- 11d. 카메라를 MJPG 로 연다 -------------------------------------------------
+# lerobot 의 OpenCVCameraConfig.fourcc 기본값은 None(자동 감지)이고, V4L2 는 보통
+# **YUYV(무압축)** 로 잡습니다. 640x480@30 한 대가 약 147 Mbps 라 USB 2.0 에 두 대도
+# 안 들어갑니다. 실제로 파이에서 host.sh 가 두 번째 카메라에서
+# "Timed out waiting for frame ... after 1000 ms" 로 죽었습니다.
+# fourcc 가 빠지면 4캠이 **연결조차 안 됩니다.** 그래서 여기서 막습니다.
+for layout in ("per_arm", "flat"):
+    for arg in record_args(cam4, layout):
+        assert '"fourcc": "MJPG"' in arg, f"{layout} 인자에 fourcc 가 없습니다: {arg}"
+ok("녹화 인자에 fourcc=MJPG 가 들어감 (per_arm / flat 둘 다)")
+
+from camera_config import DEFAULT_FOURCC, camera_kwargs  # noqa: E402
+
+assert DEFAULT_FOURCC == "MJPG", DEFAULT_FOURCC
+assert camera_kwargs({"index_or_path": "/dev/video0"})["fourcc"] == "MJPG"
+# 카메라별로 yaml 에서 덮어쓸 수 있어야 합니다 (MJPG 를 못 하는 카메라 대비).
+assert camera_kwargs({"index_or_path": 0, "fourcc": "YUYV"})["fourcc"] == "YUYV"
+ok("fourcc 기본 MJPG, yaml 에서 카메라별로 덮어쓰기 가능")
+
+# 카메라를 여는 쪽은 전부 camera_kwargs 를 거쳐야 합니다. 직접 만들면 또 어긋납니다.
+for fname in ("arm_node.py", "view_cameras.py", "preflight_cameras.py"):
+    src = (pathlib.Path(__file__).resolve().parent / "src" / fname).read_text(encoding="utf-8")
+    if "OpenCVCameraConfig(" not in src:
+        continue
+    assert "OpenCVCameraConfig(**camera_kwargs(" in src, \
+        f"{fname} 이 OpenCVCameraConfig 를 직접 조립합니다 — camera_kwargs 를 쓰세요"
+ok("카메라 설정을 만드는 곳이 전부 camera_kwargs 한 곳을 거침")
+
+
 # --- 12. 녹화에 바퀴가 들어간다 -------------------------------------------------
 # bi_so_follower + bi_so_leader 로 찍으면 액션이 팔 12차원뿐이라 정책이 주행을
 # 못 배웁니다. 바퀴(x.vel/y.vel/theta.vel)는 bi_so_base_leader 가 키보드에서

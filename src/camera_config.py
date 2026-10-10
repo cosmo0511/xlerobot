@@ -60,6 +60,20 @@ BLOCKS = {
 
 DEFAULT_SET = "3cam"
 
+# 카메라를 열 때 강제할 픽셀 포맷.
+#
+# ⚠️ 이걸 안 넘기면 lerobot 은 `fourcc=None` 으로 **자동 감지**하고, V4L2 는 보통
+#    **YUYV(무압축)** 로 잡습니다. 640x480@30 한 대가 약 147 Mbps 라 USB 2.0 에
+#    두 대도 안 들어갑니다. 실제로 파이에서 host.sh 가 두 번째 카메라에서
+#    "Timed out waiting for frame ... after 1000 ms" 로 죽었습니다.
+#
+#    MJPEG 이면 카메라당 6~8 Mbps 라 4대가 넉넉히 들어갑니다 (파이 실측 합계 26).
+#
+# 카메라별로 바꾸려면 yaml 의 그 항목에 fourcc: "YUYV" 처럼 적으면 됩니다.
+# MJPG 를 지원하지 않는 카메라면 lerobot 이 연결할 때 바로 에러를 냅니다
+# (조용히 YUYV 로 떨어지지 않습니다). 지원 여부는 run_4cam.sh scan 이 알려줍니다.
+DEFAULT_FOURCC = "MJPG"
+
 # 로봇 클래스에 따라 lerobot 이 카메라를 받는 방식이 다릅니다.
 #
 #   "per_arm" — bi_so_follower 계열. 카메라를 팔별로 나눠서 넘기고,
@@ -225,14 +239,23 @@ def dataset_fps(cams: dict) -> int:
     return rates.pop()
 
 
-def _spec_json(spec: dict) -> str:
-    return json.dumps({
-        "type": spec.get("type", "opencv"),
+def camera_kwargs(spec: dict) -> dict:
+    """yaml 의 카메라 한 항목 -> OpenCVCameraConfig 에 넘길 값.
+
+    녹화(CLI 인자)와 추론(파이썬 객체)이 **같은 값**을 쓰도록 여기 한 곳에 둡니다.
+    fourcc 가 빠지면 YUYV 로 열려서 USB 대역폭이 터집니다 — DEFAULT_FOURCC 주석 참고.
+    """
+    return {
         "index_or_path": spec["index_or_path"],
         "width": spec.get("width", 640),
         "height": spec.get("height", 480),
         "fps": spec.get("fps", 30),
-    })
+        "fourcc": spec.get("fourcc", DEFAULT_FOURCC),
+    }
+
+
+def _spec_json(spec: dict) -> str:
+    return json.dumps({"type": spec.get("type", "opencv"), **camera_kwargs(spec)})
 
 
 def flat_cameras(cams: dict) -> dict:

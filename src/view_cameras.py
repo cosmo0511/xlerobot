@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from camera_config import (  # noqa: E402
     CameraConfigError,
+    camera_kwargs,
     flat_cameras,
     load_camera_set,
 )
@@ -64,7 +65,9 @@ class LocalSource:
             dev = spec["index_or_path"]
             cap = cv2.VideoCapture(dev, cv2.CAP_V4L2) if isinstance(dev, str) else cv2.VideoCapture(dev)
             # MJPG 로 열어야 여러 대가 USB 대역폭에 들어갑니다 (YUYV 면 보통 못 버팀).
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            # 설정의 fourcc 를 그대로 따릅니다 — lerobot 이 여는 방식과 같아야 합니다.
+            cap.set(cv2.CAP_PROP_FOURCC,
+                    cv2.VideoWriter_fourcc(*camera_kwargs(spec)["fourcc"]))
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, spec.get("width", 640))
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, spec.get("height", 480))
             cap.set(cv2.CAP_PROP_FPS, spec.get("fps", 30))
@@ -94,12 +97,7 @@ class RemoteSource:
         cfg = BiSOBaseClientConfig(
             remote_ip=remote_ip,
             cameras={
-                name: OpenCVCameraConfig(
-                    index_or_path=spec["index_or_path"],
-                    width=spec.get("width", 640),
-                    height=spec.get("height", 480),
-                    fps=spec.get("fps", 30),
-                )
+                name: OpenCVCameraConfig(**camera_kwargs(spec))
                 for name, spec in cams.items()
             },
         )
