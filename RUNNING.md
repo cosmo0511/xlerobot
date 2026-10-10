@@ -156,14 +156,26 @@ lerobot-record \
 pip install -e '/home/user/lerobot_0.6[training,smolvla]'
 ```
 
+### 학습 규칙 (2026-10-10 결정 — 평가 전에 고정, 결과 보고 바꾸지 않음)
+
+| 항목 | 값 | 이유 |
+|---|---|---|
+| batch / 스텝 | **둘 다 16 / 80,000** | 같은 조건. 본 샘플 128만 = SmolVLA 공식 파인튜닝(64 × 20k)과 같은 양. 5090(32GB)에서 ACT 가 64 를 못 받아 16 으로 |
+| 학습률·옵티마이저 | **각자 기본값** | 구조가 달라서(SmolVLA 파인튜닝 / ACT 처음부터) 같은 값을 쓰면 한쪽이 망가짐 |
+| 평가에 쓸 체크포인트 | **마지막(`checkpoints/last`)** | 본 평가 결과로 고르면 사후 선택. loss 는 성공률과 잘 안 맞고 두 정책 사이 비교도 안 됨 |
+| loss 의 용도 | 학습이 정상인지·평평해졌는지 확인만 | 아직 내려가는 중이면 스텝 부족 |
+| 서버 | RTX 5090 32GB | 노트북(8GB)은 batch 16 이 안 들어감 |
+
+⚠️ batch 16 은 노트북 실측(SmolVLA b8 4.4GB, ACT b4 5GB)에서 **추정**한 값입니다 (SmolVLA ~8GB,
+ACT ~16GB). 5090 에서 아래 명령을 `--steps=20` 으로 먼저 돌려 `mem_gb` 를 확인하세요.
+
 ### SmolVLA
 ```bash
 lerobot-train \
   --policy.path=lerobot/smolvla_base \
   --policy.input_features=null --policy.output_features=null \
   --dataset.repo_id=bilimili/xlerobot-dice-4cam \
-  --dataset.root=$HOME/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam \
-  --batch_size=8 --steps=20000 --save_freq=5000 --num_workers=4 \
+  --batch_size=16 --steps=80000 --save_freq=20000 --num_workers=4 \
   --output_dir=outputs/train/smolvla_dice --job_name=smolvla_dice \
   --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false
 ```
@@ -173,27 +185,31 @@ lerobot-train \
   로 멈춥니다. `--rename_map` 으로 3개만 맞추면 **4번째 카메라가 조용히 버려지고** ACT(4개
   다 봄)와 입력이 달라집니다. null 이면 데이터셋에서 4개를 다 가져오고, 추론 때도 이름을
   바꿀 필요가 없습니다 (`arm_node.py` 가 같은 이름으로 보냄).
-- 이 노트북(RTX 4060 8GB) 실측 (2026-10-10, 5스텝): batch 8 에 GPU 4.4GB, 스텝당 0.65초
-  → 20k 스텝 약 3.6시간.
 
 ### ACT (언어 없는 대조군)
 ```bash
 lerobot-train \
   --policy.type=act \
   --dataset.repo_id=bilimili/xlerobot-dice-4cam \
-  --dataset.root=$HOME/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam \
-  --batch_size=4 --steps=40000 --save_freq=10000 --num_workers=4 \
+  --batch_size=16 --steps=80000 --save_freq=20000 --num_workers=4 \
   --output_dir=outputs/train/act_dice --job_name=act_dice \
   --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false
 ```
 
-- 8GB 에서는 **batch 4 까지만** 됩니다 (batch 4 = 5GB, batch 8 은 `use_amp` 를 켜도 OOM).
-  스텝당 0.34초 → 40k 스텝 약 3.8시간. batch 가 SmolVLA 의 절반이라 스텝을 두 배로 줘서
-  본 샘플 수(32만)를 맞췄습니다.
-- **두 개를 동시에 돌리지 마세요** — 4.4 + 5 GB 라 8GB 에 안 들어갑니다. 차례로.
+### 공통
+- 데이터는 Hub 에서 받습니다. 이 PC 처럼 로컬에 이미 있으면
+  `--dataset.root=$HOME/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam` 를 붙이세요.
+- 처음 한 번 학습용 패키지: `pip install -e '<lerobot_0.6>[training,smolvla]'`.
+  서버의 lerobot 도 **0.6.0 + `vendor/lerobot-0.6.patch`** 로 맞추세요 (체크포인트를 이 PC 추론에서 읽음).
+- 5090 에서 두 개를 **동시에** 돌려도 메모리에 들어갑니다 (추정 8 + 16GB).
+- `save_freq=20000` 은 중간에 끊겼을 때 이어가기용입니다. 평가에는 `last` 만 씁니다.
 - `output_dir` 이 이미 있으면 lerobot 이 거부합니다. 이어서 돌리려면 `--resume=true
   --config_path=<output_dir>/checkpoints/last/pretrained_model/train_config.json`.
 - `push_to_hub=false` 를 빼면 lerobot 기본값(true) 때문에 `--policy.repo_id` 가 없다고 멈춥니다.
+- 끝나면 `outputs/train/smolvla_dice`, `outputs/train/act_dice` 를 이 PC 의
+  `~/xlerobot/outputs/train/` 로 복사.
+- 노트북(RTX 4060 8GB) 참고 실측: SmolVLA batch 8 = 4.4GB·0.65s/step, ACT batch 4 = 5GB·0.34s/step,
+  ACT batch 8 은 `use_amp` 로도 OOM.
 
 끝나면 `config/robot.yaml` 의 `policy.path` 를 결과 경로로 맞추세요 (SmolVLA 는 기본값이 이미
 `outputs/train/smolvla_dice/checkpoints/last/pretrained_model`, ACT 는 `type: act` +
