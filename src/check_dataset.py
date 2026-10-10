@@ -8,6 +8,7 @@ check_dataset.py — 녹화한 데이터셋에 프레임 손실이 없는지 검
     python src/check_dataset.py <데이터셋> --episodes 5,6,7   # 일부만 (영상 디코딩이 제일 느림)
 
 영상 4개를 끝까지 디코딩하므로 에피소드 1분에 카메라 4대면 수십 초 걸립니다.
+메모리는 영상 길이와 상관없이 일정합니다 (프레임을 쌓아두지 않음).
 문제가 있으면 종료 코드 1.
 
 ■ 무엇을 보나
@@ -61,17 +62,26 @@ def resolve_root(arg: str | None) -> Path:
     return p if (p / "meta/info.json").exists() else home / arg
 
 
-def decode(path: Path) -> tuple[np.ndarray, list[np.ndarray]]:
-    """영상 하나 -> (pts 초 배열, 솎은 프레임 목록)."""
+def decode(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """영상 하나 -> (pts 초, 프레임 평균 밝기, 직전 프레임과 똑같은지).
+
+    프레임을 쌓아두지 않고 디코딩하면서 바로 비교합니다. 에피소드가 쌓이면 파일
+    하나가 1만 프레임을 넘어서, 다 들고 있으면 메모리가 수 GB 씩 찹니다.
+    """
     import av
 
-    pts, frames = [], []
+    pts, mean, same = [], [], []
+    prev = None
     with av.open(str(path)) as ct:
         s = ct.streams.video[0]
+        s.thread_type = "AUTO"
         for f in ct.decode(s):
+            x = f.to_ndarray(format="rgb24")[::STEP, ::STEP].astype(np.int16)
             pts.append(float(f.pts * s.time_base))
-            frames.append(f.to_ndarray(format="rgb24")[::STEP, ::STEP])
-    return np.array(pts), frames
+            mean.append(float(x.mean()))
+            same.append(prev is not None and float(np.abs(x - prev).mean()) < SAME_EPS)
+            prev = x
+    return np.array(pts), np.array(mean), np.array(same, dtype=bool)
 
 
 def longest_run(mask: np.ndarray) -> int:
@@ -107,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
 
     problems: list[str] = []
     data_cache: dict[Path, pd.DataFrame] = {}
-    video_cache: dict[Path, tuple[np.ndarray, list[np.ndarray]]] = {}
+    video_cache: dict[Path, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 
     def data_file(r) -> pd.DataFrame:
         p = root / info["data_path"].format(chunk_index=int(r["data/chunk_index"]),
@@ -116,12 +126,11 @@ def main(argv: list[str] | None = None) -> int:
             data_cache[p] = pd.read_parquet(p)
         return data_cache[p]
 
-    def video_file(r, cam) -> tuple[np.ndarray, list[np.ndarray]]:
+    def video_file(r, cam) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         p = root / info["video_path"].format(video_key=cam,
                                              chunk_index=int(r[f"videos/{cam}/chunk_index"]),
                                              file_index=int(r[f"videos/{cam}/file_index"]))
         if p not in video_cache:
-            video_cache.clear()  # 한 번에 한 파일만 메모리에 (파일 하나 = 여러 에피소드)
             video_cache[p] = decode(p)
         return video_cache[p]
 
@@ -132,18 +141,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  영상 디코딩: {short} ...", flush=True)
         for _, r in eps.iterrows():
             e, n = int(r.episode_index), int(r.length)
-            pts, frames = video_file(r, cam)
+            pts, mean, same_prev = video_file(r, cam)
             t0, t1 = r[f"videos/{cam}/from_timestamp"], r[f"videos/{cam}/to_timestamp"]
             idx = np.where((pts >= t0 - 1e-3) & (pts < t1 - 1e-3))[0]
             if len(idx) != n:
                 problems.append(f"ep{e} {short}: 영상 {len(idx)}프레임 / 표 {n}행 — 프레임이 빠졌습니다")
-            seg = [frames[i].astype(np.int16) for i in idx]
-            black = sum(f.mean() < BLACK_MEAN for f in seg)
+            black = int((mean[idx] < BLACK_MEAN).sum())
             if black:
                 problems.append(f"ep{e} {short}: 검은 화면 {black}장 — 파이에서 이 카메라가 안 왔습니다")
-            same[e][short] = np.array([np.abs(seg[i] - seg[i - 1]).mean() < SAME_EPS
-                                       for i in range(1, len(seg))])
-            if len(seg) > 1 and len(np.unique(np.round(np.diff(pts[idx]), 4))) > 1:
+            # 구간 첫 프레임의 비교 대상은 이전 에피소드라 뺍니다.
+            same[e][short] = same_prev[idx[1:]]
+            if len(idx) > 1 and len(np.unique(np.round(np.diff(pts[idx]), 4))) > 1:
                 problems.append(f"ep{e} {short}: 영상 시간 간격이 일정하지 않습니다")
     print()
 
