@@ -117,8 +117,28 @@ class VideoNode:
         return FOURCC_MJPG in self.formats
 
     @property
+    def is_usb(self) -> bool:
+        """USB 에 꽂힌 장치인가.
+
+        라즈베리파이는 `bcm2835-isp` 같은 **내장 영상처리 장치**를 /dev/video* 로
+        여럿 내놓습니다. 이것들도 "영상 캡처" 능력이 있다고 신고하지만 카메라가
+        아닙니다 (bus_info 가 `platform:...`). 세면 개수가 틀어지고 고정경로
+        추천까지 망가져서, USB 인 것만 카메라로 칩니다.
+        """
+        return self.bus.startswith("usb")
+
+    def stable_path(self, scheme: str) -> str:
+        """고른 방식의 고정 경로. 없으면 /dev/videoN 으로 떨어집니다."""
+        if scheme == "by-id":
+            return self.by_id or self.by_path or self.path
+        if scheme == "by-path":
+            return self.by_path or self.by_id or self.path
+        return self.path
+
+    @property
     def stable(self) -> str:
-        """재부팅해도 안 바뀌는 경로. 없으면 /dev/videoN 으로 떨어집니다."""
+        """방식을 안 정했을 때의 기본. by-id 가 겹칠 수 있으니 되도록
+        stable_path(scheme) 을 쓰세요."""
         return self.by_id or self.by_path or self.path
 
 
@@ -207,18 +227,29 @@ def capture_nodes(nodes: list[VideoNode]) -> list[VideoNode]:
     return [n for n in nodes if n.is_capture]
 
 
-def recommend_stable_scheme(caps: list[VideoNode]) -> str:
+def real_cameras(nodes: list[VideoNode]) -> list[VideoNode]:
+    """진짜 카메라만 — USB 에 꽂힌 캡처 장치.
+
+    파이에서 그냥 "캡처 장치"를 세면 `bcm2835-isp` 가 4개씩 끼어서 8개가 됩니다.
+    """
+    return [n for n in capture_nodes(nodes) if n.is_usb]
+
+
+def recommend_stable_scheme(cams: list[VideoNode]) -> str:
     """by-id 를 쓸 수 있나, by-path 를 써야 하나.
 
-    같은 모델 카메라를 여러 대 꽂으면 (시리얼이 없는 싸구려 UVC 라면) by-id 이름이
-    겹쳐서 링크가 한 개만 생깁니다. 그러면 by-id 로는 4대를 구분할 수 없습니다.
-    그 경우엔 "꽂은 USB 포트" 기준인 by-path 를 써야 합니다.
+    같은 모델 카메라를 여러 대 꽂으면 by-id 이름이 **겹칩니다.** udev 는 링크를
+    하나만 만들고, 그 링크가 재부팅·재연결 때 그중 **누구를 가리킬지 보장이
+    없습니다.** 실제로 그런 일이 있었습니다 (3대가 Generic_USB_Camera_200901010001).
+    겹치면 "꽂은 USB 포트" 기준인 by-path 를 써야 합니다.
     """
-    if not caps:
+    if not cams:
         return "none"
-    if all(n.by_id for n in caps) and len({n.by_id for n in caps}) == len(caps):
+    ids = [n.by_id for n in cams]
+    if all(ids) and len(set(ids)) == len(cams):
         return "by-id"
-    if all(n.by_path for n in caps) and len({n.by_path for n in caps}) == len(caps):
+    paths = [n.by_path for n in cams]
+    if all(paths) and len(set(paths)) == len(cams):
         return "by-path"
     return "dev"
 
@@ -478,8 +509,11 @@ def judge(stats: dict[str, CamStats], elapsed: float, want_fps: int,
 # 출력
 # =============================================================================
 def print_nodes(nodes: list[VideoNode]) -> None:
-    caps = capture_nodes(nodes)
-    print(f"/dev/video* {len(nodes)}개 — 그중 영상 캡처 {len(caps)}개\n")
+    cams = real_cameras(nodes)
+    scheme = recommend_stable_scheme(cams)
+    others = [n for n in capture_nodes(nodes) if not n.is_usb]
+
+    print(f"/dev/video* {len(nodes)}개 — 그중 **USB 카메라 {len(cams)}개**\n")
     for n in nodes:
         if n.error:
             print(f"  ✗ {n.path:<14} {n.error}")
@@ -490,51 +524,81 @@ def print_nodes(nodes: list[VideoNode]) -> None:
         if not n.is_capture:
             print(f"  · {n.path:<14} {n.card}  [캡처 아님]")
             continue
-        mjpg = "MJPG" if n.has_mjpg else "MJPG 없음!"
-        print(f"  ✓ {n.path:<14} {n.card}")
-        print(f"      버스   {n.bus}   포맷 {len(n.formats)}종  {mjpg}")
-        print(f"      고정경로 {n.stable}")
+        if not n.is_usb:
+            # 파이 내장 ISP. 캡처라고 신고하지만 카메라가 아닙니다.
+            print(f"  · {n.path:<14} {n.card}  [파이 내장 영상처리 — 카메라 아님]")
+            continue
 
-    scheme = recommend_stable_scheme(caps)
+        mark = "✓" if n.has_mjpg else "⚠"
+        print(f"  {mark} {n.path:<14} {n.card}"
+              f"{'' if n.has_mjpg else '   ← MJPG 미지원!'}")
+        print(f"      버스     {n.bus}")
+        print(f"      by-id    {n.by_id or '(없음 — 같은 모델이 여러 대라 겹침)'}")
+        print(f"      by-path  {n.by_path or '(없음)'}")
+
     print()
     if scheme == "by-id":
-        print("고정 경로로 by-id 를 쓰세요 — 카메라마다 이름이 다릅니다.")
+        print("고정 경로는 **by-id** 를 쓰세요 — 카메라마다 이름이 다릅니다.")
+        print("USB 포트를 바꿔 꽂아도 그대로입니다.")
     elif scheme == "by-path":
-        print("고정 경로로 **by-path** 를 쓰세요 — by-id 이름이 겹칩니다 "
-              "(같은 모델 카메라). by-path 는 '꽂은 USB 포트' 기준이라,\n"
-              "포트를 바꿔 꽂으면 경로도 바뀝니다. 꽂은 자리를 테이프로 표시해 두세요.")
-    else:
+        missing = [n.path for n in cams if not n.by_id]
+        print("고정 경로는 **by-path** 를 쓰세요.")
+        print(f"  같은 모델 카메라가 섞여 있어 by-id 가 겹칩니다 "
+              f"(by-id 가 없는 장치: {', '.join(missing) or '없음'}).")
+        print("  udev 는 겹치는 이름으로 링크를 **하나만** 만들고, 그 링크가")
+        print("  재부팅·재연결 때 그중 누구를 가리킬지 보장이 없습니다.")
+        print("  by-path 는 '꽂은 USB 포트' 기준이라 안전합니다 — 대신")
+        print("  **포트를 바꿔 꽂으면 경로가 바뀝니다. 꽂은 자리를 테이프로 표시하세요.**")
+    elif scheme == "dev":
         print("⚠ 고정 경로를 못 찾았습니다. /dev/videoN 은 재부팅하면 번호가 바뀝니다.")
+    else:
+        print("⚠ USB 카메라를 못 찾았습니다. 케이블·허브를 확인하세요.")
 
-    if len(caps) < 4:
-        print(f"\n⚠ 캡처 장치가 {len(caps)}개뿐입니다. 4캠에는 4개가 필요합니다. "
-              "허브·케이블을 확인하세요.")
+    if others:
+        print(f"\n(파이 내장 영상처리 장치 {len(others)}개는 카메라가 아니라서 셈에서 뺐습니다: "
+              f"{', '.join(n.path for n in others)})")
+
+    if len(cams) < 4:
+        print(f"\n⚠ USB 카메라가 {len(cams)}개뿐입니다. 4캠에는 4개가 필요합니다.")
+    no_mjpg = [n.path for n in cams if not n.has_mjpg]
+    if no_mjpg:
+        print(f"\n⚠ MJPG 를 지원 안 하는 카메라: {', '.join(no_mjpg)}")
+        print("  raw(YUYV) 로 열리면 4대 동시는 USB 대역폭을 못 버팁니다.")
+
     print("\n이름 배정(top / base / left_wrist / right_wrist)은 자동으로 알 수 없습니다.")
-    print("  python src/preflight_cameras.py --identify   ← 장치마다 한 장씩 찍어서 보고 정하세요")
+    print("  ./scripts/run_4cam.sh identify   ← 장치마다 한 장씩 찍어서 보고 정하세요")
 
 
 def print_yaml_block(nodes: list[VideoNode], want_fps: int = 30) -> None:
     """config/cameras.4cam.yaml 에 붙여넣을 블록. 이름 배정은 사람이 합니다."""
-    caps = capture_nodes(nodes)
+    cams = real_cameras(nodes)
+    scheme = recommend_stable_scheme(cams)
     slots = ["top", "base", "left_wrist", "right_wrist"]
+
+    def entry(slot: str) -> tuple[str, str]:
+        i = slots.index(slot)
+        if i >= len(cams):
+            return "/dev/video?", "  # 장치 부족"
+        n = cams[i]
+        return n.stable_path(scheme), f"  # {n.card} @ {n.bus}"
+
     print("# --- 아래를 config/cameras.4cam.yaml 에 옮기세요 -----------------------")
-    print("# ⚠ 어느 장치가 어느 카메라인지는 --identify 로 **직접 보고** 정하세요.")
-    print("#   순서대로 배정한 것일 뿐, 맞다는 보장이 없습니다.")
+    print(f"# 고정 경로 방식: {scheme}")
+    if scheme == "by-path":
+        print("# ⚠ by-path 는 꽂은 USB 포트 기준입니다. 포트를 바꿔 꽂으면 경로가 바뀝니다.")
+    print("# ⚠ 어느 장치가 어느 카메라인지는 identify 로 **직접 보고** 정하세요.")
+    print("#   아래는 /dev/videoN 순서대로 배정한 것일 뿐입니다.")
     print()
     print("top_cameras:")
     for slot in ("top", "base"):
-        node = caps[slots.index(slot)] if len(caps) > slots.index(slot) else None
-        device = node.stable if node else "/dev/video?"
-        note = f"  # {node.card}" if node else "  # 장치 부족"
-        print(f'  {slot}:{" " * (6 - len(slot)) if len(slot) < 6 else ""}'
-              f'{{index_or_path: "{device}", '
+        dev, note = entry(slot)
+        pad = " " * (6 - len(slot))
+        print(f'  {slot}:{pad}{{index_or_path: "{dev}", '
               f"width: 640, height: 480, fps: {want_fps}}}{note}")
     for block, slot in (("left_cameras", "left_wrist"), ("right_cameras", "right_wrist")):
-        node = caps[slots.index(slot)] if len(caps) > slots.index(slot) else None
-        device = node.stable if node else "/dev/video?"
-        note = f"  # {node.card}" if node else "  # 장치 부족"
+        dev, note = entry(slot)
         print(f"{block}:")
-        print(f'  wrist: {{index_or_path: "{device}", '
+        print(f'  wrist: {{index_or_path: "{dev}", '
               f"width: 640, height: 480, fps: {want_fps}}}{note}")
 
 
@@ -542,9 +606,10 @@ def identify(nodes: list[VideoNode]) -> int:
     """캡처 장치마다 한 장씩 찍어 저장합니다. 보고 이름을 배정하세요."""
     import cv2
 
-    caps = capture_nodes(nodes)
+    caps = real_cameras(nodes)
+    scheme = recommend_stable_scheme(caps)
     if not caps:
-        print("캡처 장치가 없습니다.", file=sys.stderr)
+        print("USB 카메라가 없습니다.", file=sys.stderr)
         return 1
 
     SAVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -576,8 +641,8 @@ def identify(nodes: list[VideoNode]) -> int:
         cv2.imwrite(str(out), frame)
         saved += 1
         print(f"  ✓ {out}")
-        print(f"      {node.card}")
-        print(f"      고정경로 {node.stable}")
+        print(f"      {node.card} @ {node.bus}")
+        print(f"      고정경로 {node.stable_path(scheme)}")
 
     print(f"\n{saved}장 저장했습니다. 그림을 보고 어느 게 top / base / "
           "left_wrist / right_wrist 인지 정한 다음,")
@@ -650,7 +715,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.emit_yaml:
             print()
             print_yaml_block(nodes)
-        return 0 if len(capture_nodes(nodes)) >= 4 else 1
+        return 0 if len(real_cameras(nodes)) >= 4 else 1
 
     try:
         cam_set = load_camera_set(args.camera_set)
