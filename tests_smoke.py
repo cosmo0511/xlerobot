@@ -391,8 +391,8 @@ ok("record.sh 가 bi_so_base_client + bi_so_base_leader 로 녹화 (액션에 �
 # record.sh 의 라벨이 tasks.yaml 과 글자까지 같아야 추론 때 정책이 알아듣습니다.
 sh_labels = re.findall(r'^\s*\w+\)\s+echo "([^"]+)" ;;', record_sh, re.M)
 assert sorted(sh_labels) == sorted(reg.all_prompts()), (sh_labels, reg.all_prompts())
-assert re.search(r"^EPISODE_TIME_S=60\b", record_sh, re.M), "데모 제한 60초와 녹화 길이가 다릅니다"
-ok("record.sh 라벨 = tasks.yaml 지시문, 에피소드 60초")
+assert re.search(r"^EPISODE_TIME_S=180\b", record_sh, re.M), "데모 제한 180초와 녹화 길이가 다릅니다"
+ok("record.sh 라벨 = tasks.yaml 지시문, 에피소드 180초")
 
 # 파이(host.sh)와 PC(record.sh)의 카메라 이름이 같아야 프레임이 들어옵니다.
 host_sh = (pathlib.Path(__file__).resolve().parent / "scripts" / "host.sh").read_text(
