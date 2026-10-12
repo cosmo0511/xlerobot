@@ -1,0 +1,7 @@
+time,task,status,seconds,message
+2026-10-11 12:19:20,Pick up the red dice and put it in the basket,failed,0.7,"안전정지(충돌 방지): 양팔 급동작 감지 — 왼팔 left_elbow_flex.pos 89.1, 오른팔 right_wrist_flex.pos 46.9 (기준 15.0)"
+2026-10-11 12:20:28,Pick up the red dice and put it in the basket,failed,0.1,"안전정지(충돌 방지): 양팔 급동작 감지 — 왼팔 left_elbow_flex.pos 93.2, 오른팔 right_wrist_flex.pos 47.4 (기준 15.0)"
+2026-10-11 12:27:13,Pick up the red dice and put it in the basket,failed,0.4,"안전정지(충돌 방지): 양팔 급동작 감지 — 왼팔 left_wrist_flex.pos 67.4, 오른팔 right_wrist_flex.pos 63.1 (기준 15.0)"
+2026-10-11 12:33:10,Pick up the red dice and put it in the basket,failed,0.1,"안전정지(충돌 방지): 양팔 급동작 감지 — 왼팔 left_wrist_flex.pos 67.6, 오른팔 right_wrist_flex.pos 63.2 (기준 15.0)"
+2026-10-11 12:45:44,Pick up the red dice and put it in the basket,failed,0.4,"안전정지(충돌 방지): 양팔 급동작 감지 — 왼팔 left_wrist_flex.pos 68.6, 오른팔 right_wrist_flex.pos 64.7 (기준 15.0)"
+2026-10-11 12:45:56,Pick up the red dice and put it in the basket,failed,0.1,"안전정지(충돌 방지): 양팔 급동작 감지 — 왼팔 left_wrist_flex.pos 68.7, 오른팔 right_wrist_flex.pos 64.6 (기준 15.0)"

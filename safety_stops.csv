@@ -1,0 +1,7 @@
+time,task,left_joint,left_jump,right_joint,right_jump,result
+2026-10-11 12:19:20,Pick up the red dice and put it in the basket,left_elbow_flex.pos,89.1,right_wrist_flex.pos,46.9,FAIL(safety_stop)
+2026-10-11 12:20:28,Pick up the red dice and put it in the basket,left_elbow_flex.pos,93.2,right_wrist_flex.pos,47.4,FAIL(safety_stop)
+2026-10-11 12:27:13,Pick up the red dice and put it in the basket,left_wrist_flex.pos,67.4,right_wrist_flex.pos,63.1,FAIL(safety_stop)
+2026-10-11 12:33:10,Pick up the red dice and put it in the basket,left_wrist_flex.pos,67.6,right_wrist_flex.pos,63.2,FAIL(safety_stop)
+2026-10-11 12:45:44,Pick up the red dice and put it in the basket,left_wrist_flex.pos,68.6,right_wrist_flex.pos,64.7,FAIL(safety_stop)
+2026-10-11 12:45:56,Pick up the red dice and put it in the basket,left_wrist_flex.pos,68.7,right_wrist_flex.pos,64.6,FAIL(safety_stop)
