@@ -8,8 +8,8 @@
 # 테이블에서 1m 떨어진 시작 위치(좌/중앙/우, 바닥 테이핑)에서 출발해 앞으로 주행,
 # **지시한 색의 주사위를 그쪽 팔로 집어 바구니에 넣습니다.** 한 에피소드에 전부.
 #
-#   · 빨강·파랑 주사위를 항상 둘 다, 좌/우 영역에 하나씩 (영역 안 5지점, 매번 바뀜)
-#   · 같은 장면 × 지시문 2개(red ↔ blue) = 쌍. 장면은 그대로, 지시만 바꿈
+#   · 빨강·노랑 주사위를 항상 둘 다, 좌/우 영역에 하나씩 (영역 안 5지점, 매번 바뀜)
+#   · 같은 장면 × 지시문 2개(red ↔ yellow) = 쌍. 장면은 그대로, 지시만 바꿈
 #   · 그래서 **언어를 봐야만** 정답 팔이 정해집니다 (ACT 는 언어 없는 대조군)
 #   · 12조합 = 색 2 × 좌우 2 × 시작 위치 3
 #
@@ -41,10 +41,10 @@ tasks:
         prompt: "Pick up the red dice and put it in the basket"
         max_seconds: 90
 
-  - id: blue_to_basket
-    name: 파란 주사위 바구니에 넣기
-    aliases: ["파란 거 넣어줘", "파란 주사위 바구니에", "파랑", "파란", "blue"]
+  - id: yellow_to_basket
+    name: 노란 주사위 바구니에 넣기
+    aliases: ["노란 거 넣어줘", "노란 주사위 바구니에", "노랑", "노란", "노란색", "yellow"]
     steps:
       - location: table
-        prompt: "Pick up the blue dice and put it in the basket"
+        prompt: "Pick up the yellow dice and put it in the basket"
         max_seconds: 90

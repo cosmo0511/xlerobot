@@ -8,7 +8,7 @@
 #
 #   ./scripts/record.sh red  8 --first     # 맨 처음 (데이터셋 새로 만듦)
 #   ./scripts/record.sh red  8             # 이후는 이어붙이기
-#   ./scripts/record.sh blue 8
+#   ./scripts/record.sh yellow 8
 #
 #   녹화 순서(8개씩 12블록)는 COLLECTING.md 3절 표를 따르세요.
 #
@@ -26,7 +26,7 @@
 #     카메라 구성이 다른 데이터를 한 데이터셋에 섞으면 관측 키가 안 맞아
 #     데이터셋이 깨집니다. 그래서 이름에 구성을 넣어 자동으로 분리합니다.
 #
-# 라벨 키:  red  blue
+# 라벨 키:  red  yellow
 #
 # 녹화 중 키 조작 (글자 키가 화살표보다 안전합니다 — SSH/VNC 에서는 화살표
 # 이스케이프 시퀀스가 쪼개지거나 늦게 도착합니다):
@@ -44,12 +44,12 @@
 #   ./scripts/record.sh red 3           # 3개만 찍고 쉬어도 됩니다
 #
 # ⚠ --first 는 **데이터셋 전체에 한 번만**입니다. 색깔마다가 아닙니다.
-#   red/blue 는 같은 데이터셋에 들어갑니다 — 지시문은 에피소드마다 따로 기록되고
+#   red/yellow 는 같은 데이터셋에 들어갑니다 — 지시문은 에피소드마다 따로 기록되고
 #   (task_index), 정책이 언어를 보고 팔을 고르는지 보려면 **한 데이터셋에 둘 다**
-#   있어야 합니다. 그게 이 실험의 전부입니다 (README "지시문만 red ↔ blue").
+#   있어야 합니다. 그게 이 실험의 전부입니다 (README "지시문만 red ↔ yellow").
 #
 #   ./scripts/record.sh red  8 --first   # 데이터셋 생성 (딱 한 번)
-#   ./scripts/record.sh blue 8           # --first 없음. 같은 데이터셋에 이어짐
+#   ./scripts/record.sh yellow 8         # --first 없음. 같은 데이터셋에 이어짐
 #   ./scripts/record.sh red  8           # 계속 이어짐
 #
 #   데이터셋을 쪼개는 건 **카메라 구성**뿐입니다 (-3cam / -4cam). 관측 키가
@@ -147,7 +147,7 @@ mapfile -t CAM_ARGS < <(python3 "$CAM_TOOL" "$CAMERA_SET" --record-args --robot-
 label_for() {
   case "$1" in
     red)  echo "Pick up the red dice and put it in the basket" ;;
-    blue) echo "Pick up the blue dice and put it in the basket" ;;
+    yellow) echo "Pick up the yellow dice and put it in the basket" ;;
     *) return 1 ;;
   esac
 }
@@ -161,7 +161,7 @@ if [ -z "$KEY" ] || ! TASK="$(label_for "$KEY")"; then
   echo "사용법: $0 <라벨키> [에피소드수] [--first]"
   echo
   echo "라벨키:"
-  for k in red blue; do
+  for k in red yellow; do
     printf "  %-13s %s\n" "$k" "$(label_for "$k")"
   done
   echo
@@ -228,13 +228,53 @@ $CAM_SUMMARY
   g 바퀴 잠금 해제/잠금   w/s/a/d 이동   z/x 회전   c/v 속도
 
   · 시작: 테이프 위치(좌/중앙/우)에 바퀴를 맞추고, 팔은 파킹 자세
-  · 빨강·파랑 둘 다 좌/우에 하나씩. 12개 = 색 2 × 좌우 2 × 시작 위치 3 한 바퀴
+  · 빨강·노랑 둘 다 좌/우에 하나씩. 12개 = 색 2 × 좌우 2 × 시작 위치 3 한 바퀴
   · **지시한 색 쪽 팔만** 사용. 다른 주사위를 건드렸으면 ← 로 다시
   · 짝 블록(1↔3, 2↔4 …)은 같은 위치로 — 에피소드별 주사위 위치를 적어 두세요 (COLLECTING.md 3절)
   · 위 관측 키가 **이전 세션과 같은지** 확인하세요. 다르면 섞이면 안 됩니다.
 
 EOF
 read -r -p "위 내용이 맞으면 Enter, 아니면 Ctrl+C: " _
+
+# --------------------------- 묵은 rerun 뷰어 정리 ------------------------------
+# --display_data=true 는 rr.spawn() 으로 뷰어를 띄우는데, 9876 포트에 뷰어가 이미
+# 있으면 **그걸 재사용**합니다. 그래서 녹화를 껐다 켜도 뷰어는 안 죽고 이전 세션
+# 영상이 계속 쌓입니다. LEROBOT_RERUN_MEMORY_LIMIT(기본 10%)을 넘기면 rerun 이
+# 채널을 막고, 그 블록이 녹화 루프까지 끌어내립니다.
+#   2026-10-12 실측: 1시간 54분 떠 있던 뷰어가 2.0 GiB 를 먹고 30Hz -> 0.2Hz.
+#   ("Record loop is running slower (0.2 Hz) than the target FPS (30 Hz)")
+# 그래서 녹화 시작 전에 매번 새 뷰어로 리셋합니다.
+# ※ view_cameras.py 로 띄워둔 rerun 창도 같이 닫힙니다 (같은 뷰어라서).
+#
+# pgrep -f 로 바로 죽이면 안 됩니다 — 명령줄에 'rerun' 이 들어 있기만 한 애먼
+# 셸까지 잡힙니다. argv 를 읽어서 **실행 파일이 진짜 rerun 인지** 확인합니다.
+#   rerun_cli 바이너리      -> argv[0] 이 .../rerun
+#   venv 의 파이썬 런처     -> argv[0] python3, argv[1] 이 .../bin/rerun
+is_rerun_proc() {
+  local a=()
+  [ -r "/proc/$1/cmdline" ] || return 1
+  mapfile -d '' -t a < "/proc/$1/cmdline" 2>/dev/null || return 1
+  [ "${#a[@]}" -gt 0 ] || return 1
+  [ "$(basename -- "${a[0]:-}")" = "rerun" ] && return 0
+  [ "$(basename -- "${a[1]:-}")" = "rerun" ] && return 0
+  return 1
+}
+
+STALE_RERUN=()
+for _pid in $(pgrep -f 'rerun' 2>/dev/null || true); do
+  [ "$_pid" = "$$" ] && continue
+  is_rerun_proc "$_pid" && STALE_RERUN+=("$_pid")
+done
+
+if [ "${#STALE_RERUN[@]}" -gt 0 ]; then
+  echo "묵은 rerun 뷰어 정리: ${STALE_RERUN[*]}"
+  kill "${STALE_RERUN[@]}" 2>/dev/null || true
+  for _ in 1 2 3 4 5; do
+    kill -0 "${STALE_RERUN[@]}" 2>/dev/null || break
+    sleep 0.3
+  done
+  kill -9 "${STALE_RERUN[@]}" 2>/dev/null || true
+fi
 
 # ------------------------------ 녹화 실행 -------------------------------------
 lerobot-record \

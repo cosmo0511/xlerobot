@@ -95,7 +95,7 @@ def make_agent(nav_status="arrived", policy_status="done", fail_on_step=None):
 
 
 RED = "Pick up the red dice and put it in the basket"
-BLUE = "Pick up the blue dice and put it in the basket"
+YELLOW = "Pick up the yellow dice and put it in the basket"
 
 r = make_agent().handle_command("빨간 거 넣어줘")
 assert r["status"] == "done", r
@@ -110,7 +110,7 @@ assert r["status"] == "policy_failed", r
 assert order[-1] == f"policy:{RED}", "정책 실패 뒤에 뭔가 더 실행됨"
 ok(f"정책 실패 시 중단 — {r['message'][:40]}…")
 
-r = make_agent(nav_status="blocked").handle_command("파란 거 넣어줘")
+r = make_agent(nav_status="blocked").handle_command("노란 거 넣어줘")
 assert r["status"] == "nav_failed" and r["steps_done"] == [], r
 ok("이동 실패 시 조작 차단")
 
@@ -134,11 +134,11 @@ assert order == [], "모르는 명령에 로봇이 움직임"
 ok("모르는 명령에 로봇 정지 유지")
 
 
-# --- 6. 실험 지시문은 red / blue 두 개, 색 단어만 다르다 --------------------------
+# --- 6. 실험 지시문은 red / yellow 두 개, 색 단어만 다르다 ------------------------
 # 언어 효과를 분리하는 실험이라 두 지시문은 색 단어 하나만 달라야 합니다.
 prompts = reg.all_prompts()
-assert prompts == [RED, BLUE], prompts
-assert RED.replace("red", "blue") == BLUE, "두 지시문이 색 말고도 다릅니다"
+assert prompts == [RED, YELLOW], prompts
+assert RED.replace("red", "yellow") == YELLOW, "두 지시문이 색 말고도 다릅니다"
 assert all(len(t.steps) == 1 for t in reg.tasks.values()), "실험 태스크는 1단계입니다"
 assert all(t.steps[0].max_seconds == 90 for t in reg.tasks.values()), "평가 제한은 90초"
 ok("지시문 2종, 색 단어만 다름, 1단계, 90초 제한")
@@ -152,11 +152,11 @@ ok("expect_holding=False (넣고 나면 그리퍼는 비어 있어야 함)")
 
 # --- 8. 색이 다르면 다른 지시문으로 간다 ----------------------------------------
 # 색 구분이 지시문으로만 이뤄지므로, 라우팅이 색을 틀리면 정책도 틀립니다.
-for cmd, want in [("빨간 거 넣어줘", RED), ("파란 거 넣어줘", BLUE),
-                  ("red", RED), ("blue", BLUE)]:
+for cmd, want in [("빨간 거 넣어줘", RED), ("노란 거 넣어줘", YELLOW),
+                  ("red", RED), ("yellow", YELLOW)]:
     make_agent().handle_command(cmd)
     assert f"policy:{want}" in order, f"{cmd} -> {order}"
-ok("색깔별 라우팅 — 빨강/파랑이 각각 다른 지시문으로")
+ok("색깔별 라우팅 — 빨강/노랑이 각각 다른 지시문으로")
 
 
 # --- 9. 카메라 구성 ------------------------------------------------------------
@@ -327,6 +327,19 @@ assert "preflight_cameras.py" in r4code, "run_4cam.sh 가 검증을 안 돌립�
 # record 는 검증을 통과해야 녹화를 시작해야 합니다.
 assert "SKIP_CHECK" in r4code, "record 앞에 카메라 검증이 없습니다"
 ok("run_4cam.sh 가 CAMERA_SET=4cam 을 한 곳에서 박고, 녹화 전에 검증을 돌림")
+
+# 빨강/노랑 재수집 진입점은 **데이터셋 이름만** 바꾸는 얇은 래퍼여야 합니다.
+# 여기에 녹화 로직이 복사되면 run_4cam.sh 와 어긋나서, 둘 중 하나가 낡습니다.
+v2_sh = (pathlib.Path(__file__).resolve().parent / "scripts" / "run_4cam_v2.sh").read_text(
+    encoding="utf-8")
+v2code = "\n".join(l for l in v2_sh.splitlines() if not l.lstrip().startswith("#"))
+assert 'export DATASET_SUFFIX="-v2"' in v2code, "run_4cam_v2.sh 가 -v2 를 못 박지 않습니다"
+assert 'exec "$SCRIPT_DIR/run_4cam.sh" "$@"' in v2code, "run_4cam_v2.sh 가 위임하지 않습니다"
+for forbidden in ("lerobot-record", "lerobot-teleoperate", "--robot.cameras",
+                  "/dev/video", "TELEOP_KEYS", "dataset_path.sh"):
+    assert forbidden not in v2code, \
+        f"run_4cam_v2.sh 에 {forbidden} 이 복사됐습니다 — 래퍼로만 두세요"
+ok("run_4cam_v2.sh 는 데이터셋 이름(-v2)만 박고 run_4cam.sh 에 위임하는 래퍼")
 
 
 # --- 11d. 카메라를 MJPG 로 연다 -------------------------------------------------

@@ -9,7 +9,7 @@
    → [팔 접기] → "Pick up the red dice and put it in the basket"
 ```
 
-장면은 그대로 두고 지시문만 red ↔ blue 로 바꿔서, 정책이 **언어를 보고** 팔을 고르는지
+장면은 그대로 두고 지시문만 red ↔ yellow 로 바꿔서, 정책이 **언어를 보고** 팔을 고르는지
 검증합니다 (ACT = 언어 없는 대조군). 실험·수집 절차는 [COLLECTING.md](COLLECTING.md).
 
 ## 기기 구성
@@ -145,12 +145,12 @@ CAMERA_SET=4cam ./scripts/record.sh red 12 --first
 찍는 걸 막습니다).
 
 ```bash
-./scripts/run_4cam.sh record red  8 --first   # 데이터셋 생성 (딱 한 번)
-./scripts/run_4cam.sh record blue 8           # 같은 데이터셋에 이어짐
-./scripts/run_4cam.sh record red  8           # 계속 이어짐
+./scripts/run_4cam_v2.sh record red    8 --first   # 데이터셋 생성 (딱 한 번)
+./scripts/run_4cam_v2.sh record yellow 8           # 같은 데이터셋에 이어짐
+./scripts/run_4cam_v2.sh record red    8           # 계속 이어짐
 ```
 
-red/blue 가 한 데이터셋에 섞이는 게 **맞습니다.** 지시문은 에피소드마다 따로
+red/yellow 가 한 데이터셋에 섞이는 게 **맞습니다.** 지시문은 에피소드마다 따로
 기록되고(`task_index`), 정책이 언어를 보고 팔을 고르는지 보려면 한 데이터셋에
 둘 다 있어야 합니다. 확인한 동작: 새 지시문으로 이어찍으면 추가되고(`task_index 1`),
 이미 있는 지시문이면 중복 등록되지 않습니다. 데이터셋을 쪼개는 건 **카메라 구성**

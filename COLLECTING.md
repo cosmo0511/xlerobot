@@ -10,7 +10,7 @@
 ```
             [ 테이블 ]
    좌 영역 (5지점)   바구니   우 영역 (5지점)
-     빨강 or 파랑               파랑 or 빨강      ← 매번 위치가 바뀜
+     빨강 or 노랑               노랑 or 빨강      ← 매번 위치가 바뀜
 
                   ↑ 1 m
 
@@ -20,43 +20,47 @@
 | 지시문 (`config/tasks.yaml`, 글자까지 고정) | 라벨 키 |
 |---|---|
 | `Pick up the red dice and put it in the basket` | `red` |
-| `Pick up the blue dice and put it in the basket` | `blue` |
+| `Pick up the yellow dice and put it in the basket` | `yellow` |
 
 두 문장은 **색 단어 하나만** 다릅니다. 다른 단어까지 다르면 정책이 색이 아닌 그 차이를
 단서로 쓸 수 있어서 언어 효과를 분리할 수 없습니다.
 
 ## 2. 왜 이렇게 찍나 — 언어 효과만 남기기
 
-- **주사위 2개를 항상 함께** — 빨강·파랑을 좌/우에 하나씩. 위치는 매번 바뀝니다.
-- **같은 장면 × 지시문 2개 = 쌍** — 장면은 그대로 두고 지시만 red ↔ blue.
+- **주사위 2개를 항상 함께** — 빨강·노랑을 좌/우에 하나씩. 위치는 매번 바뀝니다.
+- **같은 장면 × 지시문 2개 = 쌍** — 장면은 그대로 두고 지시만 red ↔ yellow.
 - 그래서 **지시문을 봐야만** 어느 팔을 쓸지 정해집니다.
   ACT(언어 없음)는 대조군이라 팔 선택이 50% 를 넘을 수 없습니다.
 - 12조합 = 주사위 색 2 × 좌우 위치 2 × 시작 위치 3. **모든 수량을 12조합에 똑같이** 나눕니다.
 
 ## 3. 수량과 녹화 순서 — 96개 = 8개 × 12블록
 
-지시문(색)은 **red / blue 두 가지뿐**입니다. 데이터셋은 하나(카메라 구성별: `xlerobot-dice-3cam` / `-4cam`, 실제로 찍은 건 **4cam**)이고
-red 48개 + blue 48개가 들어갑니다. 12조합이 각각 8개씩입니다.
+지시문(색)은 **red / yellow 두 가지뿐**입니다. 데이터셋은 하나(카메라 구성별: `xlerobot-dice-3cam` / `-4cam`, 실제로 찍는 건 **4cam**)이고
+red 48개 + yellow 48개가 들어갑니다. 12조합이 각각 8개씩입니다.
 
 팀 순서표 (2026-10-10 스프레드시트). 블록마다 `record.sh` 를 한 번 실행합니다.
 
 | 블록 | 에피소드 | 가져올 색 | 시작 위치 | 왼쪽 주사위 | 오른쪽 주사위 | 쓸 팔 | 명령 |
 |---|---|---|---|---|---|---|---|
-| 1 | 1–8 | 빨강 | 좌 | 파랑 | 빨강 | 오른팔 | `./scripts/record.sh red 8 --first` |
-| 2 | 9–16 | 빨강 | 좌 | 빨강 | 파랑 | 왼팔 | `./scripts/record.sh red 8` |
-| 3 | 17–24 | 파랑 | 좌 | 파랑 | 빨강 | 왼팔 | `./scripts/record.sh blue 8` |
-| 4 | 25–32 | 파랑 | 좌 | 빨강 | 파랑 | 오른팔 | `./scripts/record.sh blue 8` |
-| 5 | 33–40 | 빨강 | 중앙 | 파랑 | 빨강 | 오른팔 | `./scripts/record.sh red 8` |
-| 6 | 41–48 | 빨강 | 중앙 | 빨강 | 파랑 | 왼팔 | `./scripts/record.sh red 8` |
-| 7 | 49–56 | 파랑 | 중앙 | 파랑 | 빨강 | 왼팔 | `./scripts/record.sh blue 8` |
-| 8 | 57–64 | 파랑 | 중앙 | 빨강 | 파랑 | 오른팔 | `./scripts/record.sh blue 8` |
-| 9 | 65–72 | 빨강 | 우 | 파랑 | 빨강 | 오른팔 | `./scripts/record.sh red 8` |
-| 10 | 73–80 | 빨강 | 우 | 빨강 | 파랑 | 왼팔 | `./scripts/record.sh red 8` |
-| 11 | 81–88 | 파랑 | 우 | 파랑 | 빨강 | 왼팔 | `./scripts/record.sh blue 8` |
-| 12 | 89–96 | 파랑 | 우 | 빨강 | 파랑 | 오른팔 | `./scripts/record.sh blue 8` |
+| 1 | 1–8 | 빨강 | 좌 | 노랑 | 빨강 | 오른팔 | `./scripts/record.sh red 8 --first` |
+| 2 | 9–16 | 빨강 | 좌 | 빨강 | 노랑 | 왼팔 | `./scripts/record.sh red 8` |
+| 3 | 17–24 | 노랑 | 좌 | 노랑 | 빨강 | 왼팔 | `./scripts/record.sh yellow 8` |
+| 4 | 25–32 | 노랑 | 좌 | 빨강 | 노랑 | 오른팔 | `./scripts/record.sh yellow 8` |
+| 5 | 33–40 | 빨강 | 중앙 | 노랑 | 빨강 | 오른팔 | `./scripts/record.sh red 8` |
+| 6 | 41–48 | 빨강 | 중앙 | 빨강 | 노랑 | 왼팔 | `./scripts/record.sh red 8` |
+| 7 | 49–56 | 노랑 | 중앙 | 노랑 | 빨강 | 왼팔 | `./scripts/record.sh yellow 8` |
+| 8 | 57–64 | 노랑 | 중앙 | 빨강 | 노랑 | 오른팔 | `./scripts/record.sh yellow 8` |
+| 9 | 65–72 | 빨강 | 우 | 노랑 | 빨강 | 오른팔 | `./scripts/record.sh red 8` |
+| 10 | 73–80 | 빨강 | 우 | 빨강 | 노랑 | 왼팔 | `./scripts/record.sh red 8` |
+| 11 | 81–88 | 노랑 | 우 | 노랑 | 빨강 | 왼팔 | `./scripts/record.sh yellow 8` |
+| 12 | 89–96 | 노랑 | 우 | 빨강 | 노랑 | 오른팔 | `./scripts/record.sh yellow 8` |
 
+- 표의 `record.sh` 대신 **`./scripts/run_4cam_v2.sh record <색> 8`** 을 쓰세요 —
+  4cam 구성과 새 데이터셋(`xlerobot-dice-4cam-v2`)을 같이 박고, 녹화 전에 카메라를
+  검증합니다. `--first` 는 **record 의 인자**입니다 (check 에 붙이면 거부됩니다).
 - `--first` 는 **블록 1에서 한 번만** (데이터셋을 새로 만듦). 나머지는 이어붙입니다.
-- ⚠️ **실제 녹화 기록 (2026-10-10)**: 데이터셋 안의 순서는 위 표와 다릅니다. 8번째 묶음
+- ⚠️ **실제 녹화 기록 (2026-10-10, 예전 `xlerobot-dice-4cam` = 빨강/파랑)**: 그 데이터셋
+  안의 순서는 위 표와 다릅니다. 8번째 묶음
   (ep57–64, `episode_index` 56–63)에 블록 8 대신 **블록 9**(빨강·우·오른팔)를 찍어서,
   `lerobot-edit-dataset --operation.type modify_tasks` 로 지시문을 red 로 고쳤습니다.
   블록 8 은 9번째 묶음(ep65–72)에 찍었습니다. 블록 순서는 학습에 영향이 없습니다.
@@ -102,10 +106,10 @@ export HF_USER=<허깅페이스 아이디>
 ## 6. 다 찍고 나서
 
 ```bash
-lerobot-dataset-viz --repo-id=$HF_USER/xlerobot-dice-3cam
+lerobot-dataset-viz --repo-id=$HF_USER/xlerobot-dice-4cam-v2
 ```
 
-- 에피소드 수가 96 (red 48 / blue 48) 인지
+- 에피소드 수가 96 (red 48 / yellow 48) 인지
 - 지시와 다른 색을 집은 에피소드가 없는지 → 있으면 지우고 그 조합을 다시 찍기
 - **쌍이 유지됐는지** — 지운 에피소드의 짝도 확인
 

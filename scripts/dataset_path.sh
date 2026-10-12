@@ -29,7 +29,22 @@
 
 # 카메라 구성이 다른 데이터를 한 데이터셋에 섞으면 관측 키가 안 맞아 깨집니다.
 # 그래서 이름에 구성을 넣어 자동으로 분리합니다 (xlerobot-dice-3cam / -4cam).
-REPO_ID="${REPO_ID:-$HF_USER/xlerobot-dice-$CAMERA_SET}"
+#
+# ■ DATASET_SUFFIX — 지시문을 바꿔 새로 찍는 회차를 분리합니다
+# ---------------------------------------------------------------------------
+# 2026-10-12: 주사위를 파랑 -> **노랑**으로 바꿨습니다 (지시문 blue -> yellow).
+# 그래서 96개를 처음부터 다시 찍습니다. 지시문이 다른 데이터를 한 데이터셋에 섞으면
+# task_index 가 3개 이상으로 갈려서, "색 단어 하나만 다른 두 지시문" 이라는
+# 실험 조건(COLLECTING.md 2절)이 깨집니다.
+# 그래서 이름을 분리합니다 — 기존 96개(`-4cam`)는 그대로 남습니다.
+#
+#   기본값 (새로 찍는 것)   xlerobot-dice-4cam-v2
+#   예전 96개를 볼 때       DATASET_SUFFIX= ./scripts/run_4cam.sh status
+#
+# ⚠ 이 값을 바꾸면 record.sh 가 보는 폴더가 바뀝니다 → 이어찍기가 엉뚱한
+#   데이터셋에 붙지 않도록, 녹화할 때 배너의 "데이터셋" 줄을 꼭 확인하세요.
+DATASET_SUFFIX="${DATASET_SUFFIX--v2}"
+REPO_ID="${REPO_ID:-$HF_USER/xlerobot-dice-$CAMERA_SET$DATASET_SUFFIX}"
 
 LEROBOT_HOME="${HF_LEROBOT_HOME:-${HF_HOME:-$HOME/.cache/huggingface}/lerobot}"
 DATASET_ROOT="${DATASET_ROOT:-$LEROBOT_HOME/$REPO_ID}"

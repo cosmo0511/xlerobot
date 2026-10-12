@@ -57,7 +57,10 @@ def resolve_root(arg: str | None) -> Path:
         user = os.environ.get("HF_USER")
         if not user:
             sys.exit("데이터셋을 주거나 HF_USER 를 설정하세요. 예: export HF_USER=cosmo0511")
-        arg = f"{user}/xlerobot-dice-{os.environ.get('CAMERA_SET', '3cam')}"
+        # 이름 규칙은 scripts/dataset_path.sh 와 같아야 합니다 (DATASET_SUFFIX 포함).
+        # 예전 96개를 검사하려면 DATASET_SUFFIX= 로 비우거나 경로를 직접 주세요.
+        suffix = os.environ.get("DATASET_SUFFIX", "-v2")
+        arg = f"{user}/xlerobot-dice-{os.environ.get('CAMERA_SET', '3cam')}{suffix}"
     p = Path(arg).expanduser()
     return p if (p / "meta/info.json").exists() else home / arg
 

@@ -7,7 +7,7 @@ send_task.py — arm_node.py(제어 소켓 5580)에 지시문을 보내는 채�
 
 입력:
     r            -> 빨강 지시문 실행 (아래 TASKS)
-    b            -> 파랑 지시문 실행
+    y            -> 노랑 지시문 실행
     그 외 문장    -> 그 문장을 그대로 지시문으로 실행
     park         -> 팔 접기
     ping         -> 노드 살아있는지 확인
@@ -30,7 +30,7 @@ MAX_SECONDS = 180  # 1회 실행 제한 (평가 조건과 같게)
 # ⚠️ 학습 데이터의 task 문장과 글자 하나까지 같아야 합니다 (record.sh 에서 확인)
 TASKS = {
     "r": "Pick up the red dice and put it in the basket",
-    "b": "Pick up the blue dice and put it in the basket",
+    "y": "Pick up the yellow dice and put it in the basket",
 }
 LOG = "eval_results.csv"
 
@@ -67,7 +67,7 @@ def log_result(task, reply, elapsed):
 def main():
     ctx = zmq.Context()
     print(send(ctx, {"cmd": "ping"}, 5))
-    print("지시문 입력 (r=빨강, b=파랑, park, ping, q=종료)")
+    print("지시문 입력 (r=빨강, y=노랑, park, ping, q=종료)")
 
     while True:
         try:
