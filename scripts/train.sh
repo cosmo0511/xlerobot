@@ -12,7 +12,16 @@
 # ---------------------------------------------------------------------------
 #   batch 16, 80,000 스텝 (둘 다)   -> 본 샘플 128만 = SmolVLA 공식 파인튜닝(64 x 20k)과 같은 양
 #   학습률·옵티마이저는 각자 기본값  -> 구조가 달라서 같은 값을 쓰면 한쪽이 망가짐
-#   평가는 checkpoints/last 만       -> save_freq 는 끊겼을 때 이어가기용
+#   평가는 checkpoints/last 만       -> 중간 체크포인트는 분석용 (loss·언어 테스트를 스텝별로)
+#
+# ■ 남는 것 (2026-10-11 — 클라우드 컨테이너 재시작으로 loss 로그를 잃은 뒤 바꿈)
+# ---------------------------------------------------------------------------
+#   체크포인트 5,000 스텝마다 (80k 면 16개). 학습 결과에는 영향 없음 (저장만 함).
+#   로그는 화면과 함께 <output_dir>.log 에도 씀 (output_dir 옆 — lerobot 이 output_dir 이
+#   미리 있으면 거부해서 안에 못 둠). 영구 볼륨 안이면 재시작해도 남습니다.
+#   옵티마이저 상태(training_state)는 가장 최근 것만 남기고 지웁니다 — 이어가기에는 last 만
+#   필요하고, 전부 두면 SmolVLA 는 16개 x ~1.7GB 로 50GB 볼륨이 빠듯합니다.
+#   전부 남기려면 KEEP_ALL_STATES=1.
 #
 # 메모리 확인·연결 테스트처럼 짧게 돌릴 때만 env 로 바꿉니다 (바꾸면 경고를 찍습니다):
 #   STEPS=20 ./scripts/train.sh act
@@ -35,7 +44,7 @@ BATCH_RULE=16
 STEPS_RULE=80000
 BATCH="${BATCH:-$BATCH_RULE}"
 STEPS="${STEPS:-$STEPS_RULE}"
-SAVE_FREQ="${SAVE_FREQ:-20000}"
+SAVE_FREQ="${SAVE_FREQ:-5000}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
 DATASET_REPO="${DATASET_REPO:-bilimili/xlerobot-dice-4cam}"
 
@@ -78,11 +87,36 @@ fi
 echo "정책     : $POLICY"
 echo "데이터셋 : $DATASET_REPO ${DATASET_ROOT:+(로컬: $DATASET_ROOT)}"
 echo "batch    : $BATCH   스텝: $STEPS   저장 간격: $SAVE_FREQ"
+LOG_FILE="${OUTPUT_DIR%/}.log"
+mkdir -p "$(dirname "$OUTPUT_DIR")"
+
 echo "결과     : $OUTPUT_DIR   (평가에는 checkpoints/last)"
+echo "로그     : $LOG_FILE"
 echo
 
+# 지난 체크포인트의 training_state 를 1분마다, 그리고 끝날 때 한 번 더 정리. last 가 가리키는
+# 것과, 지금 쓰고 있을 수 있는 가장 큰 번호는 건드리지 않습니다.
+prune_old_states() {
+  local ck="$OUTPUT_DIR/checkpoints" keep newest d
+  [ -d "$ck" ] || return 0
+  keep="$(readlink -f "$ck/last" 2>/dev/null || true)"
+  newest="$( (ls -d "$ck"/[0-9]* 2>/dev/null || true) | sort | tail -n 1)"
+  for d in "$ck"/[0-9]*; do
+    [ -d "$d/training_state" ] || continue
+    [ "$(readlink -f "$d")" = "$keep" ] && continue
+    [ "$d" = "$newest" ] && continue
+    rm -rf "$d/training_state"
+  done
+}
+if [ "${KEEP_ALL_STATES:-0}" != "1" ]; then
+  ( while sleep 60; do prune_old_states; done ) &
+  PRUNE_PID=$!
+  trap 'kill "$PRUNE_PID" 2>/dev/null || true; prune_old_states' EXIT
+fi
+
 # push_to_hub=false: lerobot 기본값(true)이면 --policy.repo_id 가 없다고 멈춥니다.
-exec lerobot-train \
+# 파이프(tee)로 나가도 줄 단위로 바로 써지도록 PYTHONUNBUFFERED.
+PYTHONUNBUFFERED=1 lerobot-train \
   "${POLICY_ARGS[@]}" \
   --dataset.repo_id="$DATASET_REPO" \
   "${ROOT_ARGS[@]}" \
@@ -95,4 +129,4 @@ exec lerobot-train \
   --policy.device=cuda \
   --policy.push_to_hub=false \
   --wandb.enable=false \
-  "$@"
+  "$@" 2>&1 | tee -a "$LOG_FILE"

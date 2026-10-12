@@ -190,7 +190,7 @@ loss 가 똑같이 나오는 것까지 확인했습니다 (2026-10-10).
     바꿀 필요가 없습니다 (`arm_node.py` 가 같은 이름으로 보냄).
 - ACT: `--policy.type=act`
 - 공통: `--dataset.repo_id=bilimili/xlerobot-dice-4cam --batch_size=16 --steps=80000
-  --save_freq=20000 --num_workers=4 --output_dir=outputs/train/<정책>_dice
+  --save_freq=5000 --num_workers=4 --output_dir=outputs/train/<정책>_dice
   --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false`
 
 메모리 확인·연결 테스트처럼 짧게 돌릴 때만: `STEPS=20 ./scripts/train.sh act`
@@ -203,7 +203,10 @@ loss 가 똑같이 나오는 것까지 확인했습니다 (2026-10-10).
 - 처음 한 번 학습용 패키지: `pip install -e '<lerobot_0.6>[training,smolvla]'`.
   서버의 lerobot 도 **0.6.0 + `vendor/lerobot-0.6.patch`** 로 맞추세요 (체크포인트를 이 PC 추론에서 읽음).
 - 5090 에서 두 개를 **동시에** 돌려도 메모리에 들어갑니다 (추정 8 + 16GB).
-- `save_freq=20000` 은 중간에 끊겼을 때 이어가기용입니다. 평가에는 `last` 만 씁니다.
+- 체크포인트는 5,000 스텝마다 (80k 면 16개) — 스텝별 loss·언어 테스트 분석용. 평가에는 여전히 `last` 만.
+  옵티마이저 상태는 최근 것만 남깁니다 (전부 두려면 `KEEP_ALL_STATES=1`).
+- 로그는 화면과 함께 `<output_dir>.log` (예: `outputs/train/smolvla_dice.log`) 에도 남습니다.
+  2026-10-10 학습은 tmux 화면에만 찍혀서 컨테이너 재시작 때 loss 기록을 잃었습니다.
 - `output_dir` 이 이미 있으면 lerobot 이 거부합니다. 이어서 돌리려면 `--resume=true
   --config_path=<output_dir>/checkpoints/last/pretrained_model/train_config.json`.
 - `push_to_hub=false` 를 빼면 lerobot 기본값(true) 때문에 `--policy.repo_id` 가 없다고 멈춥니다.
