@@ -157,6 +157,8 @@ class ArmController:
         self._rx_thread = threading.Thread(target=self.client.receive_actions, daemon=True)
         self._rx_thread.start()
         self.client.start_barrier.wait()
+        from safety_guard import SafetyGuard
+        self.guard = SafetyGuard(threshold_deg=15.0)  # 양팔 동시 15 이상 튀면 정지
         logger.info("팔 준비 완료")
 
     def _observe(self, timeout_s: float = 2.0) -> dict:
@@ -262,6 +264,23 @@ class ArmController:
         deadline = time.perf_counter() + max_seconds
         steps = 0
 
+        # --- 안전정지: 양팔이 동시에 크게 튀는 명령은 보내지 않음 ---
+        from safety_guard import SafetyStop
+        self.guard.reset(self._observe(), task)
+        _robot = self.client.robot
+        _orig_send = _robot.send_action
+
+        def _guarded_send(action):
+            if not any(k.endswith(".pos") for k in action):
+                return _orig_send(action)  # 바퀴만 보내는 명령은 통과
+            try:
+                action = self.guard.check(action)
+            except SafetyStop:
+                return _orig_send(self.guard.hold_action())  # 고정 + 바퀴 정지
+            return _orig_send(action)
+
+        _robot.send_action = _guarded_send
+
         try:
             while time.perf_counter() < deadline:
                 tick = time.perf_counter()
@@ -269,6 +288,8 @@ class ArmController:
                 if self.client.actions_available():
                     self.client.control_loop_action()
                     steps += 1
+                    if self.guard.tripped:
+                        raise SafetyStop(self.guard.message)
 
                 if self.client._ready_to_send_observation():
                     # 태스크 문자열은 관측마다 같이 실려 갑니다.
@@ -277,10 +298,17 @@ class ArmController:
 
                 time.sleep(max(0.0, dt - (time.perf_counter() - tick)))
 
+        except SafetyStop as e:
+            with self.client.action_queue_lock:
+                while not self.client.action_queue.empty():
+                    self.client.action_queue.get_nowait()
+            logger.warning("안전정지: %s", e)
+            return {"status": "failed", "message": f"안전정지(충돌 방지): {e}"}
         except Exception as e:
             logger.exception("에피소드 실행 중 예외")
             return {"status": "failed", "message": f"실행 오류: {e}"}
         finally:
+            _robot.send_action = _orig_send  # 안전검사 해제 (park 등은 검사 안 함)
             # 정책의 마지막 액션이 주행 중이었으면 바퀴가 계속 돕니다. 항상 세웁니다.
             try:
                 self.stop_base()
