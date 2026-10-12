@@ -71,18 +71,18 @@ arms:
   # 이동 중 팔이 벌어져 있으면 문틀·가구에 부딪힙니다. 이동 전에 항상 이 자세로 접습니다.
   # 값은 lerobot-find-joint-limits 로 실제 로봇에서 확인해 채우세요.
   travel_pose:
-    left_shoulder_pan.pos:   0.0
-    left_shoulder_lift.pos: -95.0
-    left_elbow_flex.pos:     95.0
-    left_wrist_flex.pos:     0.0
-    left_wrist_roll.pos:     0.0
-    left_gripper.pos:        0.0
-    right_shoulder_pan.pos:  0.0
-    right_shoulder_lift.pos: -95.0
-    right_elbow_flex.pos:    95.0
-    right_wrist_flex.pos:    0.0
-    right_wrist_roll.pos:    0.0
-    right_gripper.pos:       0.0
+    left_shoulder_pan.pos:   -9.1
+    left_shoulder_lift.pos: -100.3
+    left_elbow_flex.pos:     99.0
+    left_wrist_flex.pos:     69.6
+    left_wrist_roll.pos:     0.7
+    left_gripper.pos:        3.9
+    right_shoulder_pan.pos:  -8.7
+    right_shoulder_lift.pos: -101.4
+    right_elbow_flex.pos:    95.5
+    right_wrist_flex.pos:    68.7
+    right_wrist_roll.pos:    -4.4
+    right_gripper.pos:       2.6
   park_seconds: 2.5           # 파킹 포즈까지 몇 초에 걸쳐 부드럽게 이동할지
 
   # 물건을 실제로 잡았는지 판정하는 기준.
@@ -108,8 +108,8 @@ policy:
   server_address: "127.0.0.1:8080"       # 같은 PC
   # 평가는 SmolVLA 와 ACT(언어 없는 대조군)를 번갈아 돌립니다 (COLLECTING.md 7절).
   # 정책을 바꿀 때 type 과 path 를 같이 바꾸세요. ACT 는 지시문을 무시합니다.
-  type: "smolvla"               # smolvla | act
-  path: "outputs/train/smolvla_dice/checkpoints/last/pretrained_model"
+  type: "smolvla"                # smolvla | act
+  path: "bilimili/xlerobot-dice-4cam-smolvla"
   device: "cuda"                # 서버(PC) 쪽 장치
   fps: 30                       # 데모 수집 fps 와 동일해야 함
   actions_per_chunk: 50         # 한 번에 받아오는 행동 개수
