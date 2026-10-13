@@ -2,6 +2,9 @@
 
 기기 표기: 🦾 Pi-A(양팔) · 🛞 Pi-B(르키위) · 💻 PC(GPU)
 
+> ⚠️ **지금 구성은 파이 1대입니다** (🍓 라즈베리파이 `host.sh` ↔ 💻 PC). 아래의 "🦾 Pi-A" 는 그 파이로,
+> 🛞 Pi-B·5단계(자율주행)는 **안 씀**으로 읽으세요. 실제로 쓰는 명령만 모아 둔 곳은 [README](README.md) 의 "한눈에 보는 실행 순서".
+
 0단계부터 순서대로. **처음이면 0단계만 해도 전체 흐름이 도는 걸 볼 수 있습니다.**
 
 ---
@@ -147,9 +150,9 @@ lerobot-record \
 
 ## 3단계. 학습 (SmolVLA + ACT 대조군) 💻 PC
 
-데이터셋: `bilimili/xlerobot-dice-4cam` (96개, 4cam, HF Hub 공개). 이 PC 에는 이미
-`~/.cache/huggingface/lerobot/cosmo0511/xlerobot-dice-4cam` 에 있으니 `--dataset.root` 로
-그걸 씁니다 (다시 안 받음). 다른 PC 에서는 `--dataset.root` 줄을 빼면 Hub 에서 받습니다.
+데이터셋: **`bilimili/xlerobot-dice-4cam-v2`** (빨강/노랑 104개, 4cam, HF Hub 공개 — 2026-10-12 재수집).
+`train.sh` 의 기본값입니다. 로컬 사본이 있으면 자동으로 그걸 쓰고, 없으면 Hub 에서 받습니다.
+예전 빨강/파랑 96개(`bilimili/xlerobot-dice-4cam`)는 `DATASET_REPO=` 로만 씁니다.
 
 처음 한 번: 학습용 패키지 (`accelerate`, `transformers` 등)
 ```bash
@@ -189,8 +192,8 @@ loss 가 똑같이 나오는 것까지 확인했습니다 (2026-10-10).
     다 봄)와 입력이 달라집니다. null 이면 데이터셋에서 4개를 다 가져오고, 추론 때도 이름을
     바꿀 필요가 없습니다 (`arm_node.py` 가 같은 이름으로 보냄).
 - ACT: `--policy.type=act`
-- 공통: `--dataset.repo_id=bilimili/xlerobot-dice-4cam --batch_size=16 --steps=80000
-  --save_freq=5000 --num_workers=4 --output_dir=outputs/train/<정책>_dice
+- 공통: `--dataset.repo_id=bilimili/xlerobot-dice-4cam-v2 --batch_size=16 --steps=80000
+  --save_freq=2500 --num_workers=4 --output_dir=outputs/train/<정책>_dice
   --policy.device=cuda --policy.push_to_hub=false --wandb.enable=false`
 
 메모리 확인·연결 테스트처럼 짧게 돌릴 때만: `STEPS=20 ./scripts/train.sh act`
@@ -203,9 +206,9 @@ loss 가 똑같이 나오는 것까지 확인했습니다 (2026-10-10).
 - 처음 한 번 학습용 패키지: `pip install -e '<lerobot_0.6>[training,smolvla]'`.
   서버의 lerobot 도 **0.6.0 + `vendor/lerobot-0.6.patch`** 로 맞추세요 (체크포인트를 이 PC 추론에서 읽음).
 - 5090 에서 두 개를 **동시에** 돌려도 메모리에 들어갑니다 (추정 8 + 16GB).
-- 체크포인트는 5,000 스텝마다 (80k 면 16개) — 스텝별 loss·언어 테스트 분석용. 평가에는 여전히 `last` 만.
+- 체크포인트는 2,500 스텝마다 (80k 면 32개, `SAVE_FREQ`) — 스텝별 loss·언어 테스트 분석용. 평가에는 여전히 `last` 만.
   옵티마이저 상태는 최근 것만 남깁니다 (전부 두려면 `KEEP_ALL_STATES=1`).
-- 로그는 화면과 함께 `<output_dir>.log` (예: `outputs/train/smolvla_dice.log`) 에도 남습니다.
+- 로그·논문용 기록은 영구 볼륨의 `<PERSIST_DIR>/train/<정책>_dice.log` / `.meta.json` 에 남습니다 (`train.sh` 머리말).
   2026-10-10 학습은 tmux 화면에만 찍혀서 컨테이너 재시작 때 loss 기록을 잃었습니다.
 - `output_dir` 이 이미 있으면 lerobot 이 거부합니다. 이어서 돌리려면 `--resume=true
   --config_path=<output_dir>/checkpoints/last/pretrained_model/train_config.json`.
@@ -232,7 +235,7 @@ lerobot-rollout \
   --robot.right_arm_config.port=/dev/ttyACM1 \
   "${CAM_ARGS[@]}" \    # 2단계와 동일 (camera_config.py 로 생성)
   --task="Pick up the red dice" \
-  --policy.path=outputs/train/smolvla_home/checkpoints/last/pretrained_model
+  --policy.path=outputs/train/smolvla_dice/checkpoints/last/pretrained_model
 ```
 
 **정책이 여기서 안 되면 통합해도 안 됩니다.** 반드시 이 단계에서 먼저 되게 만드세요.
@@ -269,7 +272,7 @@ python src/arm_node.py
 
 ## 5단계. 자율주행 🛞 Pi-B
 
-이 단계는 분량이 많아서 **[NAV2_SETUP.md](NAV2_SETUP.md)** 로 따로 뺐습니다.
+이 단계는 분량이 많아서 **[docs/archive/NAV2_SETUP.md](docs/archive/NAV2_SETUP.md)** (보관 — 지금은 안 씀) 로 따로 뺐습니다.
 0~7단계 체크리스트와 단계별 성공 판정이 거기 있습니다.
 
 요약하면:

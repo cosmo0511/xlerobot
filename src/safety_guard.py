@@ -6,7 +6,7 @@ safety_guard.py — 추론 중 양팔 급동작(충돌 위험) 감지 후 정지
   비교해서, 왼팔에서 threshold 이상 튀는 관절이 하나라도 있고 AND
   오른팔에서도 하나라도 있으면
   -> 그 명령은 보내지 않고, 팔은 직전 명령 위치에 고정 + 바퀴 정지
-  -> 이 회차는 실패(safety_stop)로 기록 (safety_stops.csv)
+  -> 이 회차는 실패(safety_stop)로 기록 (results/safety_stops.csv)
 
   * 그리퍼는 원래 크게 열고 닫으므로 검사에서 뺍니다.
   * 바퀴(x/y/theta.vel)는 검사하지 않고, 멈출 때 0으로 보냅니다.
@@ -14,6 +14,7 @@ safety_guard.py — 추론 중 양팔 급동작(충돌 위험) 감지 후 정지
 
 import csv
 import os
+import pathlib
 import time
 
 LEFT_JOINTS = ["left_shoulder_pan.pos", "left_shoulder_lift.pos", "left_elbow_flex.pos",
@@ -22,6 +23,9 @@ RIGHT_JOINTS = ["right_shoulder_pan.pos", "right_shoulder_lift.pos", "right_elbo
                 "right_wrist_flex.pos", "right_wrist_roll.pos"]
 GRIPPERS = ["left_gripper.pos", "right_gripper.pos"]
 ARM_KEYS = LEFT_JOINTS + RIGHT_JOINTS + GRIPPERS
+# 어디서 실행하든 레포의 results/ 에 쌓입니다
+_DEFAULT_LOG = pathlib.Path(__file__).resolve().parent.parent / "results" / "safety_stops.csv"
+
 BASE_STOP = {"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0}
 
 
@@ -31,7 +35,7 @@ class SafetyStop(Exception):
 
 class SafetyGuard:
     def __init__(self, threshold_deg: float = 15.0, require_both: bool = True,
-                 log_path: str = "safety_stops.csv"):
+                 log_path: str = str(_DEFAULT_LOG)):
         self.threshold = threshold_deg
         self.require_both = require_both  # False 면 한 팔만 넘어도 정지
         self.log_path = log_path
@@ -87,6 +91,7 @@ class SafetyGuard:
         return {**self.ref, **BASE_STOP}
 
     def _log(self, l_joint, l_jump, r_joint, r_jump):
+        os.makedirs(os.path.dirname(self.log_path) or ".", exist_ok=True)
         new = not os.path.exists(self.log_path)
         with open(self.log_path, "a", newline="", encoding="utf-8") as f:
             w = csv.writer(f)

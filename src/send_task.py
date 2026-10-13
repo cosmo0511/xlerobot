@@ -13,13 +13,14 @@ send_task.py — arm_node.py(제어 소켓 5580)에 지시문을 보내는 채�
     ping         -> 노드 살아있는지 확인
     q            -> 종료
 
-결과는 eval_results.csv 에 한 줄씩 쌓입니다 (평가 기록용).
+결과는 results/eval_results.csv 에 한 줄씩 쌓입니다 (평가 기록용).
 실행 도중 급히 멈추려면 arm_node 탭에서 Ctrl+C 하세요.
 """
 
 import csv
 import json
 import os
+import pathlib
 import time
 
 import zmq
@@ -32,7 +33,8 @@ TASKS = {
     "r": "Pick up the red dice and put it in the basket",
     "y": "Pick up the yellow dice and put it in the basket",
 }
-LOG = "eval_results.csv"
+# 어디서 실행하든 레포의 results/ 에 쌓입니다
+LOG = pathlib.Path(__file__).resolve().parent.parent / "results" / "eval_results.csv"
 
 
 def make_socket(ctx, timeout_ms):
@@ -55,6 +57,7 @@ def send(ctx, req, timeout_s):
 
 
 def log_result(task, reply, elapsed):
+    LOG.parent.mkdir(parents=True, exist_ok=True)
     new = not os.path.exists(LOG)
     with open(LOG, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
