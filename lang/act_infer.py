@@ -17,12 +17,13 @@ ACT 는 언어 입력이 없다. 영상과 관절 상태만 보고 동작을 낸
 """
 
 import argparse
-import json
 import select
 import sys
 import termios
 import time
 import tty
+
+from robot_config import build_cameras, default_remote_ip, default_robot_id, diag_row
 
 C = {"r": "\033[0m", "b": "\033[1m", "dim": "\033[2m", "ok": "\033[32m",
      "w": "\033[33m", "no": "\033[31m", "hi": "\033[36m"}
@@ -60,7 +61,6 @@ class Display:
 
 def setup(args):
     import torch
-    from lerobot.cameras.opencv import OpenCVCameraConfig
     from lerobot.policies import make_pre_post_processors
     from lerobot.policies.act import ACTPolicy
     from lerobot.robots import make_robot_from_config
@@ -89,11 +89,9 @@ def setup(args):
     )
 
     print(f"  로봇에 연결하는 중: {args.remote_ip}")
-    cameras = {}
-    for name, c in (json.loads(args.cameras) if args.cameras else {}).items():
-        c = dict(c)
-        c.pop("type", None)
-        cameras[name] = OpenCVCameraConfig(**c)
+    # 카메라는 config/cameras.<구성>.yaml 에서 (녹화·arm_node 와 같은 파일)
+    cam_set, cameras = build_cameras(args)
+    print(f"  카메라 구성: {cam_set}  ({', '.join(cameras)})")
 
     robot = make_robot_from_config(
         BiSOBaseClientConfig(remote_ip=args.remote_ip, id=args.robot_id, cameras=cameras))
@@ -138,6 +136,10 @@ def run(args):
                     raise KeyboardInterrupt
                 if ch == " ":
                     paused = not paused
+                    if paused:
+                        robot.stop_base()   # 워치독(0.5초)을 기다리지 않고 바로 세운다
+                    else:
+                        model.reset()       # 멈추기 전에 받아 둔 동작 묶음은 버린다
 
             if not paused:
                 obs = robot.get_observation()
@@ -172,6 +174,7 @@ def run(args):
                 f"{'' if abs(hz-args.fps) < args.fps*0.2 else C['w']+' ★목표 '+str(args.fps)+C['r']}"
                 f"    스텝 {sent}",
                 f"  정책   ACT  {C['dim']}(언어 입력 없음){C['r']}",
+                diag_row(robot, C),
             ])
     except KeyboardInterrupt:
         pass
@@ -188,10 +191,14 @@ def run(args):
 def main():
     p = argparse.ArgumentParser(description="ACT 추론")
     p.add_argument("--policy-path", required=True)
-    p.add_argument("--remote-ip", default="xlerobot2.local")
-    p.add_argument("--robot-id", default="bi_so101")
+    p.add_argument("--remote-ip", default=default_remote_ip(),
+                   help="파이 주소 (기본: PI_HOST 또는 robot.yaml arms.remote_ip)")
+    p.add_argument("--robot-id", default=default_robot_id())
     p.add_argument("--robot-type", default="bi_so_base_client")
-    p.add_argument("--cameras", default=None)
+    p.add_argument("--camera-set", default=None,
+                   help="config/cameras.<이름>.yaml (기본: CAMERA_SET, 없으면 정책 카메라와 맞는 구성)")
+    p.add_argument("--cameras", default=None,
+                   help="JSON 으로 직접 지정 (--camera-set 대신). 학습 때와 같아야 함")
     p.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     p.add_argument("--fps", type=float, default=30.0,
                    help="제어 주기. 학습 데이터의 fps 와 같아야 한다 (기본 30)")

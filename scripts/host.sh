@@ -23,6 +23,33 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# 패치된 lerobot 이 있는 venv. 안 켜고 실행해도 여기서 켭니다.
+LEROBOT_VENV="${LEROBOT_VENV:-$HOME/venv/lerobot_0.6}"
+if ! python -c "import lerobot.robots.bi_so_follower.bi_so_base_host" 2>/dev/null; then
+  if [ -f "$LEROBOT_VENV/bin/activate" ]; then
+    # shellcheck disable=SC1091
+    source "$LEROBOT_VENV/bin/activate"
+  fi
+  if ! python -c "import lerobot.robots.bi_so_follower.bi_so_base_host" 2>/dev/null; then
+    echo "패치된 lerobot 을 못 찾았습니다. venv 를 켜거나 LEROBOT_VENV=<경로> 로 알려주세요 (vendor/README.md)." >&2
+    exit 1
+  fi
+fi
+
+# SSH 창에서 그냥 띄우면 연결이 끊길 때 호스트도 같이 끝납니다. 호스트는 이제
+# 끝나기 전에 바퀴를 세우지만, 녹화·평가 도중에 끊기는 건 막을 수 없습니다.
+# tmux 안에서 띄우면 SSH 가 끊겨도 계속 돕니다 (다시 붙기: tmux attach -t host).
+if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${TMUX:-}" ]; then
+  echo "⚠ SSH 에서 tmux 없이 실행 중입니다. 끊기면 호스트도 멈춥니다." >&2
+  echo "  권장: tmux new -s host  →  그 안에서 다시 실행" >&2
+fi
+
+# 화면 출력을 logs/host_<시각>.log 에도 남깁니다 (5초마다 온도·전압·관측 속도 한 줄).
+mkdir -p "$PROJECT_ROOT/logs"
+HOST_LOG="$PROJECT_ROOT/logs/host_$(date +%Y%m%d_%H%M%S).log"
+exec > >(tee -a "$HOST_LOG") 2>&1
+echo "로그: $HOST_LOG"
 CAM_TOOL="$PROJECT_ROOT/src/camera_config.py"
 
 CAMERA_SET="${CAMERA_SET:-3cam}"

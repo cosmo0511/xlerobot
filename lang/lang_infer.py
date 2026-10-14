@@ -4,7 +4,7 @@
 SmolVLA 같은 언어 지원 정책에 매 스텝 지시문을 넣어 준다. 돌아가는 중에
 지시를 바꾸면 다음 동작부터 반영된다.
 
-    R / B      빨강 / 파랑 으로 전환
+    R / Y      빨강 / 노랑 으로 전환
     T          문장을 직접 입력 ("파란거 말고 빨간거" 처럼 아무렇게나)
     SPACE      일시 정지 / 재개
     Q          종료
@@ -12,14 +12,10 @@ SmolVLA 같은 언어 지원 정책에 매 스텝 지시문을 넣어 준다. �
 연습 (로봇·모델 없이 지시 전환만 확인):
     python lang_infer.py --dry-run
 
-실제 실행:
-    python lang_infer.py \\
-      --policy-path=outputs/smolvla_color/checkpoints/last/pretrained_model \\
-      --remote-ip=192.168.200.114 \\
-      --robot-id=bi_so101 \\
-      --cameras='{"cam_wrist_left": {"type":"opencv","index_or_path":"/dev/cam_left","width":640,"height":480,"fps":30},
-                  "cam_wrist_right":{"type":"opencv","index_or_path":"/dev/cam_right","width":640,"height":480,"fps":30},
-                  "cam_top":       {"type":"opencv","index_or_path":"/dev/cam_top","width":640,"height":480,"fps":30}}'
+실제 실행 (파이에서 CAMERA_SET=4cam ./scripts/host.sh 를 먼저):
+    python lang/lang_infer.py --policy-path=bilimili/xlerobot-dice-4cam-v2-smolvla --display
+
+    파이 주소·id 는 config/robot.yaml, 카메라는 config/cameras.<구성>.yaml 에서 읽는다.
 
 주의
     * 카메라 이름·해상도는 "학습할 때와 똑같아야" 한다. 다르면 모델이 못 알아본다.
@@ -27,12 +23,13 @@ SmolVLA 같은 언어 지원 정책에 매 스텝 지시문을 넣어 준다. �
 """
 
 import argparse
-import json
 import select
 import sys
 import termios
 import time
 import tty
+
+from robot_config import build_cameras, default_remote_ip, default_robot_id, diag_row
 
 from lang_parser import TASKS, parse
 
@@ -90,7 +87,7 @@ class Display:
 
 
 def key_map():
-    """TASKS 의 key 첫 글자를 단축키로 쓴다. red -> r, blue -> b."""
+    """TASKS 의 key 첫 글자를 단축키로 쓴다. red -> r, yellow -> y."""
     return {spec["key"][0]: spec for spec in TASKS}
 
 
@@ -112,7 +109,6 @@ def setup(args):
     from lerobot.policies import make_pre_post_processors
     from lerobot.policies.smolvla import SmolVLAPolicy
     from lerobot.robots import make_robot_from_config
-    from lerobot.cameras.opencv import OpenCVCameraConfig
     from lerobot.robots.bi_so_follower.config_bi_so_follower import BiSOBaseClientConfig
     from lerobot.utils.feature_utils import hw_to_dataset_features
 
@@ -145,13 +141,9 @@ def setup(args):
     print(f"  로봇에 연결하는 중: {args.remote_ip}")
     # JSON 은 그냥 dict 라서 CameraConfig 객체로 바꿔 줘야 한다.
     # (명령줄로 넘길 때는 draccus 가 해 주지만, 여기선 직접 만든다)
-    cameras = {}
-    for name, c in (json.loads(args.cameras) if args.cameras else {}).items():
-        c = dict(c)
-        kind = c.pop("type", "opencv")
-        if kind != "opencv":
-            raise ValueError(f"지원하지 않는 카메라 종류: {kind}")
-        cameras[name] = OpenCVCameraConfig(**c)
+    # 카메라는 config/cameras.<구성>.yaml 에서 (녹화·arm_node 와 같은 파일)
+    cam_set, cameras = build_cameras(args)
+    print(f"  카메라 구성: {cam_set}  ({', '.join(cameras)})")
     robot_cfg = BiSOBaseClientConfig(
         remote_ip=args.remote_ip, id=args.robot_id, cameras=cameras)
     robot = make_robot_from_config(robot_cfg)
@@ -229,6 +221,11 @@ def run(args):
                     raise KeyboardInterrupt
                 if ch == " ":
                     paused = not paused
+                    if ctx is not None:
+                        if paused:
+                            ctx[3].stop_base()   # 워치독(0.5초)을 기다리지 않고 바로 세운다
+                        else:
+                            ctx[0].reset()       # 멈추기 전에 받아 둔 동작 묶음은 버린다
                     continue
                 if low == "t":
                     disp.end()
@@ -239,6 +236,8 @@ def run(args):
                         r = llm_interpret(line, use_llm=True, device=args.device)
                         if r.get("stop"):
                             paused, reason = True, f"'{line}' → 정지"
+                            if ctx is not None:
+                                ctx[3].stop_base()
                         elif r["plan"]:
                             queue[:] = r["plan"][1:]
                             current = next(s for s in TASKS if s["key"] == r["plan"][0])
@@ -250,6 +249,8 @@ def run(args):
                         r = parse(line)
                         if r["key"] == "stop":
                             paused, reason = True, f"'{line}' → 정지"
+                            if ctx is not None:
+                                ctx[3].stop_base()
                         elif r["task"]:
                             queue.clear()
                             current = next(s for s in TASKS if s["key"] == r["key"])
@@ -301,7 +302,7 @@ def run(args):
                 f"\"{C['hi']}{current['task']}{C['r']}\""
                 + (f"  {C['mag']}← 방금 바뀜{C['r']}" if since < 1.5 else ""),
                 f"  근거   {C['dim']}{reason}{C['r']}",
-            ] + ([f"  남은   {C['w']}{len(queue)}단계{C['r']}  "
+            ] + ([diag_row(ctx[3], C)] if ctx is not None else []) + ([f"  남은   {C['w']}{len(queue)}단계{C['r']}  "
                   f"{C['dim']}→ {' → '.join(queue)}   (N 키로 다음){C['r']}"]
                  if queue else []))
 
@@ -323,10 +324,14 @@ def main():
     p.add_argument("--dry-run", action="store_true",
                    help="로봇·모델 없이 지시 전환만 연습")
     p.add_argument("--policy-path", default=None, help="학습된 모델 경로")
-    p.add_argument("--remote-ip", default="192.168.200.114")
-    p.add_argument("--robot-id", default="bi_so101")
+    p.add_argument("--remote-ip", default=default_remote_ip(),
+                   help="파이 주소 (기본: PI_HOST 또는 robot.yaml arms.remote_ip)")
+    p.add_argument("--robot-id", default=default_robot_id())
     p.add_argument("--robot-type", default="bi_so_base_client")
-    p.add_argument("--cameras", default=None, help="JSON 문자열. 학습 때와 같아야 함")
+    p.add_argument("--camera-set", default=None,
+                   help="config/cameras.<이름>.yaml (기본: CAMERA_SET, 없으면 정책 카메라와 맞는 구성)")
+    p.add_argument("--cameras", default=None,
+                   help="JSON 으로 직접 지정 (--camera-set 대신). 학습 때와 같아야 함")
     p.add_argument("--device", default="cuda", choices=["cuda", "cpu", "mps"])
     p.add_argument("--fps", type=float, default=30.0,
                    help="제어 주기. 학습 데이터의 fps 와 같아야 한다 (기본 30)")

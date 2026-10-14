@@ -34,6 +34,17 @@ pip install -e ".[feetech]"
 나머지는 `make_robot_from_config` / `make_teleoperator_from_config` 등록과
 `lerobot_*.py` 스크립트의 import 추가입니다. `lerobot_record.py` 의 녹화 로직은 **안 바뀌었습니다**.
 
+## 호스트·클라이언트만 바뀌었을 때 (파이에서 제일 흔한 경우)
+
+`bi_so_base_host.py` / `bi_so_base_client.py` 처럼 **우리가 새로 만든 파일**만 고쳤으면
+lerobot 을 다시 깔 필요 없이 그 파일만 덮어씁니다. venv 를 켠 채로:
+
+```bash
+cd ~/xlerobot && git pull && python vendor/install_files.py
+```
+
+이전 파일은 `<파일>.bak-<시각>` 으로 남고, 호스트 설정 필드가 있는지까지 확인합니다.
+
 ## 패치 갱신
 
 lerobot 소스를 더 고쳤으면 다시 뽑아서 이 파일을 교체하고 커밋하세요:

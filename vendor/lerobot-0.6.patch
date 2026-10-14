@@ -584,10 +584,10 @@ index 1d63dcb..c2de673 100644
 +]
 diff --git a/src/lerobot/robots/bi_so_follower/bi_so_base_client.py b/src/lerobot/robots/bi_so_follower/bi_so_base_client.py
 new file mode 100644
-index 0000000..644cd72
+index 0000000..0de7fa1
 --- /dev/null
 +++ b/src/lerobot/robots/bi_so_follower/bi_so_base_client.py
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,268 @@
 +import base64
 +import json
 +import logging
@@ -652,6 +652,7 @@ index 0000000..644cd72
 +
 +        self.last_frames: dict[str, np.ndarray] = {}
 +        self.last_state: dict[str, float] = {}
++        self.last_diag: dict = {}
 +        self._is_connected = False
 +        self.cameras = dict(config.cameras)
 +
@@ -762,6 +763,8 @@ index 0000000..644cd72
 +                logging.error(f"Error decoding observation: {e}")
 +                observation = None
 +            if observation is not None:
++                # Host health (Pi/servo temperatures, observation rate); not a feature.
++                self.last_diag = observation.get("_diag") or self.last_diag
 +                self.last_state = {key: float(observation.get(key, 0.0)) for key in self._state_ft}
 +                for cam_name in self._cameras_ft:
 +                    frame = self._decode_image(observation.get(cam_name, ""))
@@ -824,16 +827,25 @@ index 0000000..644cd72
 +        return action_sent
 +
 +    @check_if_not_connected
++    def stop_base(self) -> None:
++        """Zero the wheels and hold the arms where they were last observed.
++
++        A full action, not just the base keys: the host writes every key it gets,
++        and an empty arm write would make it drop the whole command.
++        """
++        stop = dict.fromkeys(self._state_ft, 0.0)
++        stop.update(self.last_state)  # keep arm targets where they are
++        for key in BASE_FEATURES:
++            stop[key] = 0.0
++        self.zmq_cmd_socket.send_string(json.dumps(stop))
++
++    @check_if_not_connected
 +    def disconnect(self):
 +        # Send a zero-velocity command before tearing down the sockets. The host
 +        # holds the last velocity it received, so without this the wheels keep
 +        # turning until its watchdog fires.
 +        try:
-+            stop = dict.fromkeys(self._state_ft, 0.0)
-+            stop.update(self.last_state)  # keep arm targets where they are
-+            for key in BASE_FEATURES:
-+                stop[key] = 0.0
-+            self.zmq_cmd_socket.send_string(json.dumps(stop))
++            self.stop_base()
 +            time.sleep(0.1)  # let it leave before the socket closes
 +            logging.info("Sent base stop command.")
 +        except Exception as exc:  # noqa: BLE001 - teardown must not raise
@@ -1159,14 +1171,15 @@ index 0000000..2757bfa
 +        return {"x.vel": float(x), "y.vel": float(y), "theta.vel": float(theta_rad * 180.0 / np.pi)}
 diff --git a/src/lerobot/robots/bi_so_follower/bi_so_base_host.py b/src/lerobot/robots/bi_so_follower/bi_so_base_host.py
 new file mode 100644
-index 0000000..2f0965d
+index 0000000..4e0948f
 --- /dev/null
 +++ b/src/lerobot/robots/bi_so_follower/bi_so_base_host.py
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,314 @@
 +import base64
 +import json
 +import logging
 +import os
++import signal
 +import time
 +from dataclasses import dataclass, field
 +from typing import Final
@@ -1183,6 +1196,108 @@ index 0000000..2f0965d
 +from .config_bi_so_follower import BiSOBaseFollowerConfig, BiSOBaseHostConfig
 +
 +MAX_CONSECUTIVE_READ_FAILURES: Final = 5
++
++# How often the host reads temperatures/voltages and prints a status line.
++# The same numbers ride along in every observation under "_diag" so the PC can
++# show them too. Override without editing code: LEROBOT_DIAG_PERIOD_S=10
++DIAG_PERIOD_S: Final[float] = float(os.environ.get("LEROBOT_DIAG_PERIOD_S", "5"))
++PI_TEMP_WARN_C: Final = 75.0  # the Pi 4 starts throttling at 80-85
++SERVO_TEMP_WARN_C: Final = 60.0
++# The firmware's sticky "under-voltage / throttled since boot" flags.
++THROTTLED_PATH: Final = "/sys/devices/platform/soc/soc:firmware/get_throttled"
++
++
++class _Shutdown(KeyboardInterrupt):
++    """Raised from a signal handler so the normal shutdown path (stop the wheels) runs."""
++
++
++def _raise_shutdown(signum, _frame):
++    raise _Shutdown(signal.Signals(signum).name)
++
++
++def _read_sysfs(path: str) -> str | None:
++    try:
++        with open(path) as f:
++            return f.read().strip()
++    except OSError:
++        return None
++
++
++class Diagnostics:
++    """Pi temperature, throttling flags, servo temperature/voltage and loop timing.
++
++    Servo values are read over the same buses as the commands, so this only runs
++    every DIAG_PERIOD_S; one sync_read per register per bus costs a few ms.
++    """
++
++    def __init__(self, robot: BiSOBaseFollower):
++        self.robot = robot
++        self.next_time = 0.0
++        self.obs_count = 0
++        self.obs_ms_sum = 0.0
++        self.obs_ms_max = 0.0
++        self.window_start = time.time()
++        self.latest: dict = {}
++
++    def record_observation(self, cycle_ms: float) -> None:
++        self.obs_count += 1
++        self.obs_ms_sum += cycle_ms
++        self.obs_ms_max = max(self.obs_ms_max, cycle_ms)
++
++    def _servos(self) -> tuple[dict[str, float], dict[str, float]]:
++        temps, volts = {}, {}
++        for side, bus in (("left", self.robot.left_arm.bus), ("right", self.robot.right_arm.bus)):
++            for name, value in bus.sync_read("Present_Temperature", normalize=False).items():
++                temps[name if name.startswith("base_") else f"{side}_{name}"] = float(value)
++            for name, value in bus.sync_read("Present_Voltage", normalize=False).items():
++                volts[name if name.startswith("base_") else f"{side}_{name}"] = float(value) / 10
++        return temps, volts
++
++    def maybe_update(self, now: float) -> None:
++        if now < self.next_time:
++            return
++        self.next_time = now + DIAG_PERIOD_S
++
++        d: dict = {}
++        raw = _read_sysfs("/sys/class/thermal/thermal_zone0/temp")
++        if raw is not None:
++            d["pi_temp_c"] = round(int(raw) / 1000, 1)
++        raw = _read_sysfs(THROTTLED_PATH)
++        if raw is not None:
++            d["pi_throttled"] = raw
++        try:
++            temps, volts = self._servos()
++            hot = max(temps, key=temps.get)
++            low = min(volts, key=volts.get)
++            d.update(servo_temp_max_c=temps[hot], servo_temp_max_name=hot,
++                     servo_volt_min_v=round(volts[low], 1), servo_volt_min_name=low)
++        except Exception as exc:  # noqa: BLE001 - diagnostics must never stop the host
++            d["servo_error"] = str(exc)[:120]
++
++        span = now - self.window_start
++        if self.obs_count and span > 0:
++            d["obs_hz"] = round(self.obs_count / span, 1)
++            d["obs_ms_avg"] = round(self.obs_ms_sum / self.obs_count, 1)
++            d["obs_ms_max"] = round(self.obs_ms_max, 1)
++        self.obs_count, self.obs_ms_sum, self.obs_ms_max = 0, 0.0, 0.0
++        self.window_start = now
++        self.latest = d
++
++        line = (
++            f"[status] pi {d.get('pi_temp_c', '?')}C throttled={d.get('pi_throttled', '?')} | "
++            f"servo max {d.get('servo_temp_max_c', '?')}C ({d.get('servo_temp_max_name', '-')}) "
++            f"min {d.get('servo_volt_min_v', '?')}V ({d.get('servo_volt_min_name', '-')}) | "
++            f"obs {d.get('obs_hz', '?')}Hz, {d.get('obs_ms_avg', '?')}ms avg / {d.get('obs_ms_max', '?')}ms max"
++        )
++        warn = (
++            d.get("pi_temp_c", 0) >= PI_TEMP_WARN_C
++            or d.get("pi_throttled", "0x0") not in ("0", "0x0")
++            or d.get("servo_temp_max_c", 0) >= SERVO_TEMP_WARN_C
++            or "servo_error" in d
++        )
++        if "servo_error" in d:
++            line += f" | servo read failed: {d['servo_error']}"
++        (logging.warning if warn else logging.info)(line)
 +
 +
 +@dataclass
@@ -1235,6 +1350,10 @@ index 0000000..2f0965d
 +@draccus.wrap()
 +def main(cfg: BiSOBaseServerConfig):
 +    init_logging()
++    # Without these, closing the SSH session kills the host before the finally
++    # block runs, and the wheels keep the last velocity they were given.
++    for sig in (signal.SIGHUP, signal.SIGTERM):
++        signal.signal(sig, _raise_shutdown)
 +    logging.info("Configuring BiSOBaseFollower")
 +    robot = BiSOBaseFollower(cfg.robot)
 +
@@ -1243,6 +1362,7 @@ index 0000000..2f0965d
 +
 +    logging.info("Starting host")
 +    host = BiSOBaseHost(cfg.host)
++    diag = Diagnostics(robot)
 +
 +    last_cmd_time = time.time()
 +    obs_interval = 1.0 / max(host.observation_freq_hz, 1)
@@ -1287,7 +1407,10 @@ index 0000000..2f0965d
 +                try:
 +                    robot.stop_base()
 +                except Exception as exc:  # noqa: BLE001 - never let this kill the loop
-+                    logging.error("Watchdog could not stop the base: %s", exc)
++                    logging.error("Watchdog could not stop the base, retrying: %s", exc)
++                    watchdog_active = False  # try again next iteration
++
++            diag.maybe_update(now)
 +
 +            # Commands are applied every iteration; observations are far more
 +            # expensive (two JPEG frames) and only need the camera frame rate.
@@ -1306,7 +1429,11 @@ index 0000000..2f0965d
 +
 +            last_observation = None
 +            try:
++                obs_start = time.perf_counter()
 +                last_observation = _encode_observation(robot.get_observation())
++                diag.record_observation((time.perf_counter() - obs_start) * 1000)
++                if diag.latest:
++                    last_observation["_diag"] = diag.latest
 +                consecutive_read_failures = 0
 +            except ConnectionError as e:
 +                consecutive_read_failures += 1
@@ -1339,15 +1466,21 @@ index 0000000..2f0965d
 +            duration = time.perf_counter() - start
 +        print("Cycle time reached.")
 +
++    except _Shutdown as sig:
++        logging.warning("Received %s. Stopping the base and exiting...", sig)
 +    except KeyboardInterrupt:
-+        print("Keyboard interrupt received. Exiting...")
++        logging.info("Keyboard interrupt received. Exiting...")
 +    finally:
-+        print("Shutting down BiSOBase host.")
-+        # Stop the wheels before anything else can fail during teardown.
++        for sig in (signal.SIGHUP, signal.SIGTERM):
++            signal.signal(sig, signal.SIG_IGN)
++        # Stop the wheels before anything else can fail during teardown. That
++        # includes printing: after an SSH drop the terminal is gone and print()
++        # raises, which would otherwise skip this.
 +        try:
 +            robot.stop_base()
 +        except Exception as exc:  # noqa: BLE001
 +            logging.error("Could not stop the base on shutdown: %s", exc)
++        logging.info("Shutting down BiSOBase host.")
 +        robot.disconnect()
 +        host.disconnect()
 +

@@ -8,17 +8,20 @@
 ## 빠른 시작
 
 ```bash
-# 🍓 파이
-./scripts/host.sh                      # CAMERA_SET=4cam ./scripts/host.sh
+# 🍓 파이 — 모델이 4cam 으로 학습됐으므로 반드시 4cam
+CAMERA_SET=4cam ./scripts/host.sh
 
 # 💻 PC — SmolVLA (언어 지시 가능)
-python lang/lang_infer.py --policy-path=bilimili/xlerobot-dice-4cam-v2-smolvla \
-  --remote-ip=xlerobot2.local --robot-id=bi_so101 --display
+python lang/lang_infer.py --policy-path=bilimili/xlerobot-dice-4cam-v2-smolvla --display
 
 # 💻 PC — ACT (언어 없음, 대조군)
-python lang/act_infer.py --policy-path=bilimili/xlerobot-dice-4cam-v2-act \
-  --remote-ip=xlerobot2.local --robot-id=bi_so101 --display
+python lang/act_infer.py --policy-path=bilimili/xlerobot-dice-4cam-v2-act --display
 ```
+
+파이 주소·로봇 id 는 `config/robot.yaml` 의 `arms` 에서(`PI_HOST=` 로 변경),
+카메라는 `config/cameras.<구성>.yaml` 에서 읽습니다 — 녹화·`arm_node.py` 와 같은 파일.
+구성은 `--camera-set` > `CAMERA_SET` > 정책 카메라와 이름이 맞는 구성 순서로 고르고,
+정책이 기대하는 카메라와 다르면 로봇에 붙기 전에 멈춥니다.
 
 조작키 — `R` 빨강 / `Y` 노랑 / `T` 문장으로 말하기 / `SPACE` 일시정지 / `Q` 종료
 
