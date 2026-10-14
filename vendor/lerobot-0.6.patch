@@ -1171,10 +1171,10 @@ index 0000000..2757bfa
 +        return {"x.vel": float(x), "y.vel": float(y), "theta.vel": float(theta_rad * 180.0 / np.pi)}
 diff --git a/src/lerobot/robots/bi_so_follower/bi_so_base_host.py b/src/lerobot/robots/bi_so_follower/bi_so_base_host.py
 new file mode 100644
-index 0000000..4e0948f
+index 0000000..89c779c
 --- /dev/null
 +++ b/src/lerobot/robots/bi_so_follower/bi_so_base_host.py
-@@ -0,0 +1,314 @@
+@@ -0,0 +1,355 @@
 +import base64
 +import json
 +import logging
@@ -1195,7 +1195,11 @@ index 0000000..4e0948f
 +from .bi_so_base_follower import BiSOBaseFollower
 +from .config_bi_so_follower import BiSOBaseFollowerConfig, BiSOBaseHostConfig
 +
-+MAX_CONSECUTIVE_READ_FAILURES: Final = 5
++# Give up only after observations have failed for this long. Counting failures
++# instead (it used to be 5 in a row, ConnectionError only) let a single stale
++# camera frame (TimeoutError) or servo status error (RuntimeError) kill the host
++# outright, and a short USB hiccup burn through 5 tries in 150 ms.
++OBS_FAILURE_LIMIT_S: Final[float] = float(os.environ.get("LEROBOT_OBS_FAILURE_LIMIT_S", "3"))
 +
 +# How often the host reads temperatures/voltages and prints a status line.
 +# The same numbers ride along in every observation under "_diag" so the PC can
@@ -1347,6 +1351,32 @@ index 0000000..4e0948f
 +    return encoded
 +
 +
++def _disconnect_best_effort(robot: BiSOBaseFollower) -> None:
++    """Close each arm and every camera even if one of them is already gone.
++
++    robot.disconnect() stops at the first failure: a vanished left-arm port
++    (termios EIO) used to leave the right arm and the camera threads open, and
++    the interpreter then aborted with "FATAL: exception not rethrown".
++    """
++    try:
++        robot.disconnect()
++        return
++    except Exception as exc:  # noqa: BLE001
++        logging.error("Disconnect failed (%s: %s); closing the rest one by one.", type(exc).__name__, exc)
++    for arm in (robot.left_arm, robot.right_arm):
++        for cam in arm.cameras.values():
++            try:
++                if cam.is_connected:
++                    cam.disconnect()
++            except Exception:  # noqa: BLE001
++                pass
++        try:
++            if arm.bus.is_connected:
++                arm.bus.port_handler.closePort()
++        except Exception:  # noqa: BLE001
++            pass
++
++
 +@draccus.wrap()
 +def main(cfg: BiSOBaseServerConfig):
 +    init_logging()
@@ -1372,7 +1402,8 @@ index 0000000..4e0948f
 +    next_obs_time = time.time()
 +    watchdog_active = False
 +    client_connected = True
-+    consecutive_read_failures = 0
++    obs_failing_since: float | None = None
++    obs_failures = 0
 +    logging.info(
 +        "Command loop %d Hz, observation stream %d Hz.",
 +        host.max_loop_freq_hz,
@@ -1387,6 +1418,12 @@ index 0000000..4e0948f
 +            try:
 +                msg = host.zmq_cmd_socket.recv_string(zmq.NOBLOCK)
 +                data = dict(json.loads(msg))
++                # The client is driving on a picture we can no longer refresh.
++                # Arms may keep their targets; the base must not roll blind.
++                if obs_failing_since is not None and (
++                    time.time() - obs_failing_since > host.watchdog_timeout_ms / 1000
++                ):
++                    data.update({"x.vel": 0.0, "y.vel": 0.0, "theta.vel": 0.0})
 +                robot.send_action(data)
 +                last_cmd_time = time.time()
 +                watchdog_active = False
@@ -1434,19 +1471,23 @@ index 0000000..4e0948f
 +                diag.record_observation((time.perf_counter() - obs_start) * 1000)
 +                if diag.latest:
 +                    last_observation["_diag"] = diag.latest
-+                consecutive_read_failures = 0
-+            except ConnectionError as e:
-+                consecutive_read_failures += 1
-+                logging.warning(
-+                    "Observation read failed (%d/%d), skipping this cycle: %s",
-+                    consecutive_read_failures,
-+                    MAX_CONSECUTIVE_READ_FAILURES,
-+                    e,
-+                )
-+                if consecutive_read_failures >= MAX_CONSECUTIVE_READ_FAILURES:
++                if obs_failing_since is not None:
++                    logging.info(
++                        "Observations recovered after %.1f s (%d failed reads).",
++                        time.time() - obs_failing_since, obs_failures,
++                    )
++                obs_failing_since, obs_failures = None, 0
++            except Exception as e:  # noqa: BLE001 - camera TimeoutError, servo RuntimeError, OSError...
++                now = time.time()
++                if obs_failing_since is None:
++                    obs_failing_since = now
++                    logging.warning("Observation read failed (%s): %s", type(e).__name__, e)
++                obs_failures += 1
++                if now - obs_failing_since > OBS_FAILURE_LIMIT_S:
 +                    logging.error(
-+                        "Observation read failed %d times in a row. Stopping host.",
-+                        consecutive_read_failures,
++                        "Observations have failed for %.1f s (%d reads, last %s: %s). "
++                        "A device is gone; check `sudo dmesg | tail` for a USB disconnect. Stopping host.",
++                        now - obs_failing_since, obs_failures, type(e).__name__, e,
 +                    )
 +                    raise
 +
@@ -1481,7 +1522,7 @@ index 0000000..4e0948f
 +        except Exception as exc:  # noqa: BLE001
 +            logging.error("Could not stop the base on shutdown: %s", exc)
 +        logging.info("Shutting down BiSOBase host.")
-+        robot.disconnect()
++        _disconnect_best_effort(robot)
 +        host.disconnect()
 +
 +    logging.info("Finished BiSOBase host cleanly")
