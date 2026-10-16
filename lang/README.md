@@ -54,6 +54,7 @@ PC 성능에 따라 로봇이 학습 때보다 빠르게 움직입니다.
 | `analysis/lang_wiring.py` | 지시문이 토큰으로 변환돼 모델까지 가는지 (배선 점검) |
 | `analysis/robustness.py` | 영상을 흔들었을 때 출력이 얼마나 무너지는가 |
 | `analysis/infer_time.py` | 추론 1회 / 큐 꺼내기 시간. 제어 주기를 지킬 수 있는지 |
+| `analysis/bias_probe.py` | **왜 한쪽 팔만?** 왼팔·오른팔 데이터 비중 + 영상·관절 단서를 지웠을 때 정책이 기본으로 가는 팔 |
 | `analysis/shortcut_probe.py` | **지름길 점검.** 팔이 갈라지는 시점 앞뒤에서 지시문·영상·관절 상태를 하나씩 바꿔 예측 팔이 뒤집히는지 (104 에피소드 전부) |
 
 ⚠️ `lang_strength.py` · `robustness.py` 는 `select_action` 의 행동 큐 때문에 에피소드당 **첫 프레임에서 한 번만** 추론하고,
