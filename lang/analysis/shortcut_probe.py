@@ -74,8 +74,8 @@ for e in np.unique(epcol):
     info[int(e)] = dict(idx=idx, arm=arm, td=td, color=color, fps=ds.fps)
 
 eps = sorted(info)
-if args.episodes:
-    eps = eps[: args.episodes]
+if args.episodes:   # 앞에서부터 자르면 한 블록(같은 색·팔)만 걸리므로 고르게 뽑는다
+    eps = [eps[int(i)] for i in np.linspace(0, len(eps) - 1, args.episodes)]
 tds = np.array([info[e]["td"] / ds.fps for e in eps])
 lens = np.array([len(info[e]["idx"]) / ds.fps for e in eps])
 print(f"에피소드 {len(eps)} · 분기 시점 중앙값 {np.median(tds):.1f}초 (범위 {tds.min():.1f}–{tds.max():.1f}) "
