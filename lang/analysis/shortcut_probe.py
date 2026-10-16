@@ -24,7 +24,7 @@
     python lang/analysis/shortcut_probe.py                                  # SmolVLA + no-lang
     python lang/analysis/shortcut_probe.py --act bilimili/<v2-ACT 모델>      # ACT 도 (지시문 조건 제외)
     python lang/analysis/shortcut_probe.py --episodes 20                    # 빠르게 확인만
-결과: results/offline_shortcut.csv (프레임·조건별 한 줄) + 화면 요약
+결과: results/offline_shortcut_<시각>.csv (프레임·조건별 한 줄) + 화면 요약
 """
 import argparse, csv, math, os, random
 import numpy as np, torch
@@ -44,8 +44,11 @@ ap.add_argument("--smolvla", default="bilimili/xlerobot-dice-4cam-v2-smolvla")
 ap.add_argument("--nolang", default="bilimili/xlerobot-dice-4cam-v2-smolvla-nolang")
 ap.add_argument("--act", default=None, help="v2 데이터로 학습한 ACT 모델 (없으면 건너뜀)")
 ap.add_argument("--episodes", type=int, default=0, help="0 = 전부")
-ap.add_argument("--out", default="results/offline_shortcut.csv")
+ap.add_argument("--out", default=None, help="기본: results/offline_shortcut_<시각>.csv (이전 결과를 덮어쓰지 않음)")
 args = ap.parse_args()
+if args.out is None:
+    import time
+    args.out = time.strftime("results/offline_shortcut_%Y%m%d_%H%M%S.csv")
 dev = torch.device("cuda")
 
 # ── 1. 행동 기록에서 사용 팔과 분기 시점 찾기 (영상 디코딩 없음) ──

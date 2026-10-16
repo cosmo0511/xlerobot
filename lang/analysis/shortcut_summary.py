@@ -1,11 +1,17 @@
 """shortcut_probe.py 결과(csv)를 모델별로 다시 요약합니다. 화면을 스크롤할 필요 없이 한 번에 보기용.
 
-    python lang/analysis/shortcut_summary.py [results/offline_shortcut.csv]
+    python lang/analysis/shortcut_summary.py [csv 경로]   # 생략하면 가장 최근 결과
 """
 import csv, sys
 from collections import defaultdict
 
-path = sys.argv[1] if len(sys.argv) > 1 else "results/offline_shortcut.csv"
+import glob, os
+if len(sys.argv) > 1:
+    path = sys.argv[1]
+else:   # 가장 최근 결과 (예전 이름 offline_shortcut.csv 포함), 헤더만 있는 빈 파일은 건너뜀
+    cands = [p for p in glob.glob("results/offline_shortcut*.csv") if sum(1 for _ in open(p)) > 1]
+    path = max(cands, key=os.path.getmtime)
+print("파일:", path)
 rows = list(csv.DictReader(open(path)))
 by = defaultdict(dict)
 for r in rows:
