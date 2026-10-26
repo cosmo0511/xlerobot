@@ -15,7 +15,7 @@
         비교용으로 표 2 와 같은 "반대 배치 짝"(같은 색·반대 팔) 교체도 같이 낸다.
 
     python lang/analysis/memorization_probe.py --smolvla <경로> [--nolang <경로>] 2>&1 | tee results/memorization_probe.log
-결과: results/memorization_probe_<시각>.csv + 화면 요약
+결과: results/memorization_probe_<시각>.csv (장면별) + results/memorization_probe_<시각>_요약.txt (표만)
 """
 import argparse, csv, math, os, random, time
 import numpy as np, torch
@@ -35,6 +35,17 @@ ap.add_argument("--nolang", default=None, help="언어 없이 학습한 SmolVLA 
 ap.add_argument("--out", default=time.strftime("results/memorization_probe_%Y%m%d_%H%M%S.csv"))
 args = ap.parse_args()
 dev = torch.device("cuda")
+SUMMARY = args.out.replace(".csv", "_요약.txt")
+os.makedirs(os.path.dirname(SUMMARY) or ".", exist_ok=True)
+_sf = open(SUMMARY, "w", encoding="utf-8")
+
+
+def say(*a):
+    """화면에 찍고 요약 파일에도 바로 남긴다 (터미널을 위로 올려 볼 필요 없게)."""
+    line = " ".join(str(x) for x in a)
+    print(line, flush=True)
+    _sf.write(line + "\n"); _sf.flush()
+
 
 # ── 데이터: 사용 팔, 색, 분기 시점 ──
 ds = LeRobotDataset(DS)
@@ -93,11 +104,11 @@ def wilson(k, n):
 cells = {}
 for e in eps:
     k = (info[e]["color"], info[e]["arm"]); cells[k] = cells.get(k, 0) + 1
-print(f"에피소드 {len(eps)} (" + ", ".join(f"{c}-{a} {n}" for (c, a), n in sorted(cells.items())) + ")")
+say(f"에피소드 {len(eps)} (" + ", ".join(f"{c}-{a} {n}" for (c, a), n in sorted(cells.items())) + ")")
 
 # ── 실험 1 의 데이터 부분: 시점마다 사용 팔이 이미 얼마나 움직였나 (모델 없이) ──
-print("\n[데이터] 분기 전 시점별 사용 팔의 출발 자세 대비 변화 (관절 상태, 최대 관절 기준 °)")
-print(f"  {'시점':>8s}{'사용 팔 중앙값':>14s}{'사용 팔 90%':>12s}{'반대 팔 중앙값':>14s}{'사람 청크로 본 정답 팔':>22s}")
+say("\n[데이터] 분기 전 시점별 사용 팔의 출발 자세 대비 변화 (관절 상태, 최대 관절 기준 °)")
+say(f"  {'시점':>8s}{'사용 팔 중앙값':>14s}{'사용 팔 90%':>12s}{'반대 팔 중앙값':>14s}{'사람 청크로 본 정답 팔':>22s}")
 for off in OFFSETS:
     used, other, ok, n = [], [], 0, 0
     for e in eps:
@@ -108,7 +119,7 @@ for off in OFFSETS:
         u, o = (L, R) if info[e]["arm"] == "L" else (R, L)
         used.append(np.abs(s[u] - s0[u]).max()); other.append(np.abs(s[o] - s0[o]).max())
         n += 1; ok += chunk_arm(acts[gi: gi + 50]) == info[e]["arm"]
-    print(f"  {off / fps:+7.2f}초{np.median(used):13.1f}°{np.percentile(used, 90):11.1f}°{np.median(other):13.1f}°{ok:>15d}/{n}")
+    say(f"  {off / fps:+7.2f}초{np.median(used):13.1f}°{np.percentile(used, 90):11.1f}°{np.median(other):13.1f}°{ok:>15d}/{n}")
 
 
 # ── 모델 ──
@@ -147,7 +158,7 @@ w.writerow(["model", "episode", "color", "arm", "offset", "cond", "pred_arm"])
 
 for tag, path in models:
     model, pre, post = load(path)
-    print(f"\n{'=' * 70}\n{tag}  ({path})\n{'=' * 70}", flush=True)
+    say(f"\n{'=' * 70}\n{tag}  ({path})\n{'=' * 70}")
     res = {}   # (off, cond) -> list of (arm, pred)
     for n, e in enumerate(eps):
         me = info[e]
@@ -175,9 +186,9 @@ for tag, path in models:
         if (n + 1) % 10 == 0:
             print(f"  {n + 1}/{len(eps)} 에피소드", flush=True)
 
-    print(f"\n  [{tag}] 시점별 결과 — 첫 줄은 원본의 정답 팔 비율, 나머지는 원본 대비 예측 팔이 뒤집힌 비율")
+    say(f"\n  [{tag}] 시점별 결과 — 첫 줄은 원본의 정답 팔 비율, 나머지는 원본 대비 예측 팔이 뒤집힌 비율")
     head = "  " + f"{'':16s}" + "".join(f"{o / fps:+9.2f}초" for o in OFFSETS)
-    print(head)
+    say(head)
     for c in CONDS:
         row = f"  {c:<16s}"
         for off in OFFSETS:
@@ -190,15 +201,17 @@ for tag, path in models:
             else:
                 k = sum(p != base[e] for e, a, p in r)
             row += f"{100 * k / len(r):10.1f}%"
-        print(row)
+        say(row)
     n0 = len(res.get((OFFSETS[0], "원본"), []))
-    print(f"  (시점당 장면 수 {n0}개. 95% 신뢰구간은 csv 로 계산하거나 wilson() 참고)")
+    say(f"  (시점당 장면 수 {n0}개. 95% 신뢰구간은 csv 로 계산하거나 wilson() 참고)")
     del model; torch.cuda.empty_cache()
 
-print(f"\n기록: {args.out}")
-print("""읽는 법
+say(f"\n기록: {args.out}")
+say(f"요약: {SUMMARY}")
+say("""읽는 법
   · 데이터 표: 3·2초 전의 '사용 팔' 변화가 0° 근처면 그 시점엔 팔이 아직 안 움직였다.
   · 원본 정답률이 3·2초 전에도 ~100% → 팔이 움직이기 전부터 맞힌다 → (A) 장면 암기 쪽.
     멀수록 50% 에 가깝고 분기에 가까울수록 오르면 → (B) 움직임 흔적 쪽.
   · 영상(같은 배치) 뒤집힘이 크면 → 배치가 같은데도 답이 바뀐다 → 장면 차이에 반응 → (A).
     영상(같은 배치)는 작고 상태(같은 배치)가 크면 → (B).""")
+_sf.close()
