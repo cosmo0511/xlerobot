@@ -33,7 +33,10 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--smolvla", required=True)
 ap.add_argument("--nolang", default=None, help="언어 없이 학습한 SmolVLA (대조군, 선택)")
 ap.add_argument("--out", default=time.strftime("results/memorization_probe_%Y%m%d_%H%M%S.csv"))
+ap.add_argument("--post", action="store_true", help="분기 후 시점만 (0.5·1.5초 후, 표 2 의 분기 후 칸)")
 args = ap.parse_args()
+if args.post:
+    OFFSETS = [15, 45]
 dev = torch.device("cuda")
 SUMMARY = args.out.replace(".csv", "_요약.txt")
 os.makedirs(os.path.dirname(SUMMARY) or ".", exist_ok=True)
