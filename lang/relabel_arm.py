@@ -113,8 +113,13 @@ def copy_dataset(src, dst):
     for name in os.listdir(src):
         s, d = os.path.join(src, name), os.path.join(dst, name)
         if name == "videos" and os.path.isdir(s):
+            # HF 다운로드 캐시(snapshots/)의 파일은 blobs/ 를 가리키는 상대 심볼릭 링크다.
+            # 리눅스 link() 는 링크를 따라가지 않아서 그대로 하드링크하면 깨진 링크가 된다
+            # → 실제 파일(realpath)에 하드링크한다.
+            def link_target(a, b):
+                os.link(os.path.realpath(a), b)
             try:
-                shutil.copytree(s, d, copy_function=os.link)
+                shutil.copytree(s, d, copy_function=link_target)
             except OSError:
                 shutil.rmtree(d, ignore_errors=True)
                 print("  (하드링크가 안 돼서 영상을 복사합니다 — 시간이 좀 걸립니다)")
