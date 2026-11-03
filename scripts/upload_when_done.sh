@@ -46,7 +46,15 @@ then
 fi
 
 # --- 1. 학습이 끝날 때까지 기다리기 ---------------------------------------------
-running() { pgrep -f -- "--output_dir=$OUTPUT_DIR" >/dev/null 2>&1; }
+# pgrep(procps) 이 없는 슬림 이미지도 있어서 /proc 을 직접 봅니다.
+# [l] 은 이 grep 자신의 명령줄이 걸리지 않게 하는 것.
+running() {
+  local f
+  for f in /proc/[0-9]*/cmdline; do
+    tr '\0' ' ' < "$f" 2>/dev/null | grep -q -- "[l]erobot-train.*--output_dir=$OUTPUT_DIR" && return 0
+  done
+  return 1
+}
 if running; then
   say "학습 대기 중: $OUTPUT_DIR (5분마다 확인)"
   while running; do sleep 300; done
