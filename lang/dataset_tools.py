@@ -98,7 +98,9 @@ def cmd_check(roots):
         counts = {}
         if eps is not None and "tasks" in eps.columns:
             for v in eps["tasks"]:
-                key = v[0] if isinstance(v, (list, tuple)) and len(v) else str(v)
+                # parquet 에서 읽으면 list 가 아니라 numpy 배열로 온다
+                seq = not isinstance(v, str) and hasattr(v, "__len__")
+                key = v[0] if seq and len(v) else str(v)
                 counts[str(key)] = counts.get(str(key), 0) + 1
         elif eps is not None and "task_index" in eps.columns:
             idx_to_task = {v: k for k, v in m["tasks"].items()}
