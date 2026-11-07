@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>학회 포스터 - 양팔 이동 조작 정책</title>
+<style>
+@font-face { font-family: P; src: url(fonts/Pretendard-Regular.ttf); font-weight: 400; }
+@font-face { font-family: P; src: url(fonts/Pretendard-Medium.ttf); font-weight: 500; }
+@font-face { font-family: P; src: url(fonts/Pretendard-SemiBold.ttf); font-weight: 600; }
+@font-face { font-family: P; src: url(fonts/Pretendard-Bold.ttf); font-weight: 700; }
+@font-face { font-family: P; src: url(fonts/Pretendard-ExtraBold.ttf); font-weight: 800; }
+
+/* 실제 크기: A4 3장 x 4장 = 630 x 1188 mm */
+@page { size: 630mm 1188mm; margin: 0; }
+:root {
+  --ink: #1d1f24;
+  --sub: #4a4f58;
+  --navy: #18335c;
+  --act: #2b6fd0;
+  --vla: #e8662e;
+  --rule: #c9ced6;
+  --pale: #f3f5f8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #fff; }
+body {
+  width: 630mm; height: 1188mm; overflow: hidden;
+  font-family: P, sans-serif; color: var(--ink);
+  font-size: 9.6mm; line-height: 1.56; letter-spacing: -0.01em;
+  word-break: keep-all;
+}
+
+/* ---------- 머리 ---------- */
+header {
+  height: 212mm; padding: 20mm 16mm 0;
+  border-bottom: 2.2mm solid var(--navy);
+  position: relative;
+}
+.pno {
+  position: absolute; right: 16mm; top: 14mm;
+  font-size: 9mm; color: var(--sub); font-weight: 500;
+}
+h1 {
+  font-size: 30mm; line-height: 1.16; font-weight: 800; color: var(--navy);
+  letter-spacing: -0.03em;
+}
+.en {
+  margin-top: 7mm; font-size: 12.4mm; line-height: 1.25; font-weight: 600; color: #3a4252;
+  letter-spacing: -0.01em;
+}
+.authors { margin-top: 12mm; font-size: 11.6mm; font-weight: 600; }
+.authors sup { font-size: 0.6em; font-weight: 500; margin-left: 0.4mm; }
+.aff { margin-top: 3mm; font-size: 9mm; color: var(--sub); }
+
+/* ---------- 본문 3단: 단 경계 = A4 이음새 ---------- */
+main { display: flex; height: 976mm; }
+.col { width: 210mm; padding: 13mm 15mm 0; }
+.col + .col { border-left: 0.4mm solid var(--rule); }
+
+h2 {
+  font-size: 13.4mm; font-weight: 800; color: var(--navy);
+  margin: 17mm 0 5mm; padding-bottom: 2mm;
+  border-bottom: 0.5mm solid var(--navy);
+}
+.col > h2:first-child { margin-top: 0; }
+h3 { font-size: 10mm; font-weight: 700; margin: 7mm 0 2.5mm; color: #22324d; }
+p + p { margin-top: 3.2mm; }
+.small { font-size: 7.4mm; color: var(--sub); line-height: 1.45; }
+b, strong { font-weight: 700; }
+.num { font-feature-settings: "tnum"; }
+
+.rq { margin-top: 5mm; border-left: 2mm solid var(--navy); padding: 1mm 0 1mm 5mm; }
+.rq div + div { margin-top: 2mm; }
+.rq span { font-weight: 800; color: var(--navy); margin-right: 2.5mm; }
+
+ul.plain { list-style: none; }
+ul.plain li { padding-left: 5mm; position: relative; }
+ul.plain li + li { margin-top: 2mm; }
+ul.plain li::before { content: ""; position: absolute; left: 0; top: 0.72em; width: 2mm; height: 0.5mm; background: var(--ink); }
+
+figure { margin: 8mm 0 3mm; }
+figcaption { margin-top: 3mm; font-size: 8mm; font-weight: 600; text-align: center; color: #333; }
+svg { display: block; width: 100%; height: auto; }
+
+table { width: 100%; border-collapse: collapse; font-size: 8.4mm; margin-top: 9mm; }
+caption { font-size: 8mm; font-weight: 600; margin-bottom: 2.5mm; color: #333; }
+th, td { padding: 1.7mm 2mm; text-align: center; }
+thead th { border-top: 0.6mm solid var(--ink); border-bottom: 0.35mm solid var(--ink); font-weight: 700; }
+tbody tr:last-child td { border-bottom: 0.6mm solid var(--ink); }
+td:first-child, th:first-child { text-align: left; white-space: nowrap; }
+td small { font-size: 0.78em; color: var(--sub); }
+h2 .cont { font-weight: 600; font-size: 0.62em; color: var(--sub); margin-left: 2mm; }
+tr.sep td { border-top: 0.3mm solid var(--rule); }
+td.hi { font-weight: 700; color: var(--vla); }
+
+.callout {
+  margin-top: 6mm; background: var(--pale); padding: 5mm 6mm;
+  border-top: 0.6mm solid var(--navy);
+}
+.callout .big { font-size: 19mm; font-weight: 800; line-height: 1.05; color: var(--vla); }
+.callout .big small { font-size: 8.6mm; color: var(--ink); font-weight: 600; margin-left: 2mm; }
+
+ol.refs { font-size: 6.3mm; line-height: 1.38; color: var(--sub); padding-left: 8mm; }
+ol.refs li + li { margin-top: 0.8mm; }
+
+.concl p { font-size: 9.6mm; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="pno">P-&nbsp;&nbsp;&nbsp;&nbsp;</div>
+  <h1>양팔 이동 조작 정책의 조작 성능과<br>언어 지시 추종의 괴리</h1>
+  <div class="en">Dissociation between Manipulation Performance and Language Instruction Following<br>in a Bimanual Mobile Manipulation Policy</div>
+  <div class="authors">김미송<sup>*</sup>, 김송연<sup>*</sup>, 최명기<sup>*</sup>, 김현우<sup>†</sup>, 조혜경<sup>*</sup></div>
+  <div class="aff"><sup>*</sup>한성대학교 AI응용학과 &nbsp;&nbsp; <sup>†</sup>주식회사 로보시지</div>
+</header>
+
+<main>
+<!-- ============ 1단 ============ -->
+<section class="col">
+  <h2>1. 서론</h2>
+  <p>저가형 로봇에서 VLA 정책 평가는 대부분 고정형 단팔에서 이루어졌다. SO-101 비교 연구[1]에서는 SmolVLA[2]가 ACT[3]보다 대체로 나은 조작 성능을 보였고, Mobile ALOHA[4]는 이동 베이스와 양팔을 한 정책으로 학습했지만 언어 지시는 쓰지 않았다.</p>
+  <p>한편 조작 성공률이 높다고 해서 지시를 따른다고 볼 수 없다는 보고가 이어지고 있다[5–8]. 양팔 로봇은 목표 물체에 따라 <b>어느 팔을 쓸지</b> 골라야 하므로, 언어가 행동 결정에 들어가는지를 직접 확인할 수 있다.</p>
+  <div class="rq">
+    <div><span>RQ1</span>SmolVLA가 ACT보다 높은 조작 성능을 보이는가?</div>
+    <div><span>RQ2</span>언어 지시에 따라 올바른 팔을 선택하는가?</div>
+  </div>
+  <p style="margin-top:4mm">또한 팔 선택 분기 전후로 언어·영상·관절 상태 입력을 하나씩 바꿔 정책이 무엇에 반응하는지 분석하였다.</p>
+
+  <h2>2. 시스템 구성</h2>
+  <p>XLeRobot[9] 기반으로 SO-ARM101 양팔과 3-옴니휠 베이스를 사용하였다. 행동·관측 상태는 양팔 관절 12개와 베이스 속도(x, y, θ) 3개의 <b>15차원</b>이고, 여기에 카메라 4대 영상이 더해진다. 학습·추론은 LeRobot[10]을 사용하였다.</p>
+
+  <figure>
+    <svg viewBox="0 0 180 186" font-family="P" font-size="6.4">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#444"/></marker>
+      </defs>
+      <!-- Pi -->
+      <rect x="0.5" y="0.5" width="179" height="62" fill="#fff" stroke="#2b6fd0" stroke-width="0.8"/>
+      <rect x="0.5" y="0.5" width="179" height="12" fill="#2b6fd0"/>
+      <text x="5" y="9" fill="#fff" font-weight="700" font-size="7">라즈베리파이 · 로봇 호스트</text>
+      <text x="175" y="9" fill="#fff" font-size="6" text-anchor="end">연산 없음, 센서·모터 중계</text>
+      <g fill="#222">
+        <text x="5" y="24" font-weight="700">카메라 4대</text>
+        <text x="5" y="33">640×480, 30 fps</text>
+        <text x="5" y="42">상단 · 베이스 · 양 손목</text>
+        <text x="94" y="24" font-weight="700">모터 15개</text>
+        <text x="94" y="33">양팔 12 (위치 모드)</text>
+        <text x="94" y="42">바퀴 3 (속도 모드)</text>
+        <text x="5" y="56" fill="#555" font-size="6">명령이 500 ms 이상 끊기면 팔 고정, 바퀴 정지</text>
+      </g>
+      <!-- arrows -->
+      <line x1="45" y1="64" x2="45" y2="98" stroke="#444" stroke-width="0.7" marker-end="url(#ar)"/>
+      <text x="50" y="78" font-weight="700" font-size="6">관측</text>
+      <text x="50" y="86" font-size="5.8" fill="#444">JPEG 영상 + 관절 15</text>
+      <line x1="125" y1="98" x2="125" y2="64" stroke="#444" stroke-width="0.7" marker-end="url(#ar)"/>
+      <text x="130" y="78" font-weight="700" font-size="6">행동</text>
+      <text x="130" y="86" font-size="5.8" fill="#444">15차원, 1스텝씩</text>
+      <!-- PC -->
+      <rect x="0.5" y="100" width="179" height="52" fill="#fff" stroke="#e8662e" stroke-width="0.8"/>
+      <rect x="0.5" y="100" width="179" height="12" fill="#e8662e"/>
+      <text x="5" y="108.5" fill="#fff" font-weight="700" font-size="7">PC · 정책 실행 (GPU)</text>
+      <g fill="#222">
+        <text x="5" y="123" font-weight="700">ACT / SmolVLA 추론</text>
+        <text x="5" y="132">행동 청크 생성 후 1스텝씩 전송</text>
+        <text x="94" y="123" font-weight="700">제어 주기 30 Hz 고정</text>
+        <text x="94" y="132">학습 데이터 fps와 같음</text>
+      </g>
+      <!-- link note -->
+      <text x="0" y="166" fill="#222" font-size="5.8"><tspan font-weight="700">유선</tspan>  왕복 평균 2.8 ms (최대 9.9 ms), 손실 0%</text>
+      <text x="0" y="176" fill="#222" font-size="5.8"><tspan font-weight="700">무선</tspan>  평균 812 ms 지연으로 관측이 갱신되지 않음</text>
+      <text x="0" y="185" fill="#666" font-size="5.8">→ 모든 평가는 유선, 30 Hz 고정 조건에서 수행</text>
+    </svg>
+    <figcaption>그림 1. 분산 제어 구조 (ZMQ 5556 관측 / 5555 행동)</figcaption>
+  </figure>
+
+  <h2>3. 과제 및 실험 설정</h2>
+  <figure style="margin-top:2mm">
+    <svg viewBox="0 0 180 76" font-family="P" font-size="6">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#333"/></marker>
+      </defs>
+      <circle cx="17" cy="38" r="12" fill="none" stroke="#333" stroke-width="0.8"/>
+      <rect x="9" y="22" width="4.5" height="10" fill="#333"/><rect x="20.5" y="22" width="4.5" height="10" fill="#333"/>
+      <text x="17" y="62" text-anchor="middle" fill="#333">로봇</text>
+      <line x1="32" y1="38" x2="98" y2="38" stroke="#333" stroke-width="0.6" stroke-dasharray="2 1.5" marker-end="url(#ar2)"/>
+      <text x="65" y="33" text-anchor="middle" fill="#222" font-weight="700">1 m 주행</text>
+      <rect x="102" y="2" width="77" height="72" fill="#f3f5f8" stroke="#888" stroke-width="0.5"/>
+      <text x="175" y="10" text-anchor="end" fill="#777" font-size="5.4">책상</text>
+      <rect x="108" y="12" width="10" height="10" fill="#d7312b"/>
+      <rect x="108" y="54" width="10" height="10" fill="#f2c318" stroke="#b08d00" stroke-width="0.3"/>
+      <text x="121" y="20" font-size="5.4" fill="#333">좌우 배치는</text>
+      <text x="121" y="26.5" font-size="5.4" fill="#333">시행마다 바뀜</text>
+      <rect x="146" y="31" width="25" height="16" fill="none" stroke="#333" stroke-width="0.7"/>
+      <text x="158.5" y="55" text-anchor="middle" font-size="5.4" fill="#333">바구니</text>
+    </svg>
+    <figcaption>그림 2. 과제 배치 (위에서 본 모습)</figcaption>
+  </figure>
+  <p>로봇은 1 m 앞 책상까지 이동한 뒤 좌우에 놓인 빨강·노랑 주사위 중 <b>지시된 색을 그쪽 팔로</b> 집어 바구니에 넣는다. 지시문은 색 단어 하나만 다르고 두 주사위가 늘 함께 있으므로, 영상만으로는 대상을 정할 수 없다.</p>
+</section>
+
+<!-- ============ 2단 ============ -->
+<section class="col">
+  <h2>3. 과제 및 실험 설정<span class="cont">(계속)</span></h2>
+  <ul class="plain">
+    <li>데이터: 텔레오퍼레이션 <b>104 에피소드</b>(평균 38.2초), 색상×팔 26/26/26/26 균등</li>
+    <li>두 팔의 동작은 중앙값 <b>23.6초</b>에서 갈라지며, 그 전까지는 지시와 관계없이 행동이 같다</li>
+    <li>학습: 두 모델 모두 같은 데이터, batch 16, 80k 스텝</li>
+    <li>평가: 모델당 40회(배치 2 × 시작 위치 2 × 지시 2, 각 5회). 단계별로 독립 판정하고 Fisher 정확 검정·이항 검정으로 비교</li>
+  </ul>
+
+  <h2>4. 결과</h2>
+  <p>SmolVLA는 조작 네 단계 모두에서 ACT보다 유의하게 높았다(<b>RQ1</b>). 그러나 지시 색상 일치율은 <b>50.0%</b>였다(<b>RQ2</b>). 8개 조건 전부에서 지시와 관계없이 오른쪽 주사위를 집었고, 배치가 좌우 균형이라 산술적으로 50%가 된 것이다.</p>
+
+  <figure>
+    <svg viewBox="0 0 180 132" font-family="P" font-size="6">
+      <g stroke="#e1e4e9" stroke-width="0.3">
+        <line x1="22" y1="12" x2="178" y2="12"/><line x1="22" y1="34" x2="178" y2="34"/>
+        <line x1="22" y1="56" x2="178" y2="56"/><line x1="22" y1="78" x2="178" y2="78"/>
+      </g>
+      <line x1="22" y1="100" x2="178" y2="100" stroke="#333" stroke-width="0.5"/>
+      <g fill="#555" font-size="5.6" text-anchor="end">
+        <text x="19" y="13.8">100</text><text x="19" y="35.8">75</text><text x="19" y="57.8">50</text><text x="19" y="79.8">25</text><text x="19" y="101.8">0</text>
+      </g>
+      <text x="5" y="56" font-size="5.6" fill="#555" transform="rotate(-90 5 56)" text-anchor="middle">성공률 (%)</text>
+      <line x1="147" y1="6" x2="147" y2="120" stroke="#999" stroke-width="0.35" stroke-dasharray="1.5 1.2"/>
+      <!-- bars (w 11) -->
+      <rect x="27.5" y="40.6" width="11" height="59.4" fill="#2b6fd0"/><rect x="39.5" y="14.2" width="11" height="85.8" fill="#e8662e"/>
+      <rect x="57.5" y="25.2" width="11" height="74.8" fill="#2b6fd0"/><rect x="69.5" y="12" width="11" height="88" fill="#e8662e"/>
+      <rect x="87.5" y="40.6" width="11" height="59.4" fill="#2b6fd0"/><rect x="99.5" y="12" width="11" height="88" fill="#e8662e"/>
+      <rect x="117.5" y="45" width="11" height="55" fill="#2b6fd0"/><rect x="129.5" y="14.2" width="11" height="85.8" fill="#e8662e"/>
+      <rect x="163" y="56" width="11" height="44" fill="#e8662e"/>
+      <text x="157" y="92" font-size="4.9" fill="#777" text-anchor="middle">ACT는</text>
+      <text x="157" y="97.5" font-size="4.9" fill="#777" text-anchor="middle">해당 없음</text>
+      <g font-size="5.2" text-anchor="middle" fill="#222">
+        <text x="33" y="38.4">67.5</text><text x="45" y="12">97.5</text>
+        <text x="63" y="23">85.0</text><text x="75" y="9.8">100</text>
+        <text x="93" y="38.4">67.5</text><text x="105" y="9.8">100</text>
+        <text x="123" y="42.8">62.5</text><text x="135" y="12">97.5</text>
+        <text x="168.5" y="52.5" font-weight="700" font-size="6">50.0</text>
+      </g>
+      <line x1="150" y1="56" x2="178" y2="56" stroke="#333" stroke-width="0.45" stroke-dasharray="1.2 1"/>
+      <text x="178" y="62" font-size="4.9" text-anchor="end" fill="#333">우연 수준</text>
+      <g font-size="6" text-anchor="middle" fill="#222">
+        <text x="39" y="108">베이스 도달</text><text x="69" y="108">팔 움직임</text>
+        <text x="99" y="108">파지</text><text x="129" y="108">바구니</text><text x="163" y="108">지시 색상</text>
+      </g>
+      <text x="84" y="116.5" font-size="5.4" text-anchor="middle" fill="#666">조작 성능</text>
+      <text x="163" y="116.5" font-size="5.4" text-anchor="middle" fill="#666">지시 추종</text>
+      <rect x="30" y="124" width="5" height="5" fill="#2b6fd0"/><text x="37.5" y="128.6" font-size="5.8">ACT (언어 입력 없음)</text>
+      <rect x="100" y="124" width="5" height="5" fill="#e8662e"/><text x="107.5" y="128.6" font-size="5.8">SmolVLA (언어 조건부)</text>
+    </svg>
+    <figcaption>그림 3. 단계별 성공률 (모델당 40회)</figcaption>
+  </figure>
+
+  <table>
+    <caption>표 1. 모델별 단계 성공률 (각 40회)</caption>
+    <thead><tr><th></th><th>ACT</th><th>SmolVLA</th><th>p</th></tr></thead>
+    <tbody class="num">
+      <tr><td>베이스 도달</td><td>67.5%</td><td>97.5%</td><td>&lt;0.001</td></tr>
+      <tr><td>팔 움직임</td><td>85.0%</td><td>100%</td><td>0.026</td></tr>
+      <tr><td>파지</td><td>67.5%</td><td>100%</td><td>&lt;0.001</td></tr>
+      <tr><td>바구니 투입</td><td>62.5%</td><td>97.5%</td><td>&lt;0.001</td></tr>
+      <tr class="sep"><td>지시 색상 일치</td><td>–</td><td class="hi">50.0%</td><td>1.0</td></tr>
+      <tr><td>오른팔 사용</td><td>94.1% <small>(32/34)</small></td><td class="hi">100%</td><td>&lt;0.001</td></tr>
+    </tbody>
+  </table>
+  <p class="small" style="margin-top:2.5mm">위 네 항목은 ACT–SmolVLA 간 Fisher 정확 검정, 지시 색상 일치와 오른팔 사용은 50% 대비 이항 검정. 오른팔 사용의 분모는 팔이 움직인 시행(ACT 34회, SmolVLA 40회).</p>
+
+  <div class="callout">
+    <div class="big">40 / 40<small>SmolVLA 오른팔 사용</small></div>
+    <p style="margin-top:3mm">조작은 거의 완벽했지만 "빨강"이든 "노랑"이든 같은 팔로 같은 쪽 주사위를 집었다. ACT도 94.1%가 오른팔이었다.</p>
+  </div>
+
+  <h2>5. 입력 민감도 분석</h2>
+  <p>학습 데이터 104 에피소드에서 입력을 하나씩 바꿔 SmolVLA가 예측하는 팔을 확인하였다. 사용한 팔의 관절이 처음 값에서 10° 이상 벗어난 첫 프레임을 <b>분기 시점</b>으로 두고, 분기 전 312장면과 후 208장면을 평가하였다. 교체 입력은 같은 색 지시이면서 주사위 배치가 반대인 짝 에피소드에서 가져왔다.</p>
+
+</section>
+
+<!-- ============ 3단 ============ -->
+<section class="col">
+  <h2>5. 입력 민감도 분석<span class="cont">(계속)</span></h2>
+  <figure>
+    <svg viewBox="0 0 180 130" font-family="P" font-size="6">
+      <g stroke="#e1e4e9" stroke-width="0.3">
+        <line x1="84" y1="12" x2="84" y2="112"/><line x1="114" y1="12" x2="114" y2="112"/><line x1="144" y1="12" x2="144" y2="112"/><line x1="174" y1="12" x2="174" y2="112"/>
+      </g>
+      <line x1="54" y1="12" x2="54" y2="112" stroke="#333" stroke-width="0.5"/>
+      <g font-size="5.4" fill="#555" text-anchor="middle">
+        <text x="54" y="119">0</text><text x="84" y="119">25</text><text x="114" y="119">50</text><text x="144" y="119">75</text><text x="174" y="119">100%</text>
+      </g>
+      <text x="114" y="128" font-size="5.6" fill="#555" text-anchor="middle">예측 팔이 뒤집힌 비율</text>
+      <g text-anchor="end" fill="#222">
+        <text x="50" y="23" font-size="6.2">잡음</text><text x="50" y="30" font-size="5.2" fill="#666">난수 시드</text>
+        <text x="50" y="48" font-size="6.2">지시문</text><text x="50" y="55" font-size="5.2" fill="#666">반대 색</text>
+        <text x="50" y="73" font-size="6.2" font-weight="700">영상</text><text x="50" y="80" font-size="5.2" fill="#666">반대 배치</text>
+        <text x="50" y="98" font-size="6.2" font-weight="700">관절 상태</text><text x="50" y="105" font-size="5.2" fill="#666">반대 배치</text>
+      </g>
+      <g font-size="5.2" fill="#222">
+        <rect x="54" y="16" width="0.8" height="7" fill="#9aa6b8"/><rect x="54" y="24" width="0.4" height="7" fill="#18335c"/>
+        <text x="57" y="21.6">0.6</text><text x="57" y="29.6">0.0</text>
+        <rect x="54" y="41" width="1.6" height="7" fill="#9aa6b8"/><rect x="54" y="49" width="0.4" height="7" fill="#18335c"/>
+        <text x="58" y="46.6">1.3</text><text x="57" y="54.6">0.0</text>
+        <rect x="54" y="66" width="70.4" height="7" fill="#9aa6b8"/><rect x="54" y="74" width="10.4" height="7" fill="#18335c"/>
+        <text x="127" y="71.6">58.7</text><text x="67" y="79.6">8.7</text>
+        <rect x="54" y="91" width="54.2" height="7" fill="#9aa6b8"/><rect x="54" y="99" width="109.6" height="7" fill="#18335c"/>
+        <text x="111" y="96.6">45.2</text><text x="166" y="104.6" font-weight="700" font-size="5.8">91.3</text>
+      </g>
+      <rect x="110" y="1" width="5" height="5" fill="#9aa6b8"/><text x="117.5" y="5.6" font-size="5.6">분기 전</text>
+      <rect x="144" y="1" width="5" height="5" fill="#18335c"/><text x="151.5" y="5.6" font-size="5.6">분기 후</text>
+    </svg>
+    <figcaption>그림 4. 입력 교체 시 예측 팔 뒤집힘 (SmolVLA)</figcaption>
+  </figure>
+  <p class="small" style="text-align:center">각 행은 해당 입력만 바꾼 독립 시험 (분모: 분기 전 312, 후 208장면)</p>
+
+  <h3>지시문은 거의 무시된다</h3>
+  <p>지시문만 바꾸면 출력이 달라지므로 지시문이 계산에 들어가기는 한다. 그러나 예측 팔이 바뀐 비율은 <b>1.3%</b>(4/312)로 잡음 기준(0.6%)과 비슷했다. 분기 전에는 영상과 관절 상태, 분기 후에는 관절 상태의 영향이 지배적이었다.</p>
+
+  <h3>학습 데이터 안에서는 맞힌다</h3>
+  <p>원본 입력에서 분기 전 예측 팔은 시연과 <b>99.7%</b> 일치했으나 실기에서는 오른팔만 썼다. 관절값을 그대로 복사하기만 해도 정책이 줄인 오차의 84%를 얻을 수 있어 상태 복사 문제[11]와 비슷한 구조이지만, 이것이 직접 원인인지는 이 시험만으로 판단할 수 없다.</p>
+  <p>또한 분기 1초 전부터 0.17초 전까지 사용 팔의 관절은 출발 자세 대비 중앙값 0.1°만 변했는데도 예측 팔은 99–100% 일치하였다. 주사위 배치는 같고 지시와 사용 팔만 다른 에피소드의 영상이나 관절 상태로 바꿔도 예측 팔이 각각 <b>51.3%</b>, <b>47.8%</b> 바뀌어, 정책은 주사위 배치보다 에피소드별 장면·자세의 미세한 차이에 반응했을 가능성이 있다.</p>
+
+  <h2>6. 결론</h2>
+  <div class="concl">
+  <p>SmolVLA는 조작 네 단계 모두 ACT보다 유의하게 높았으나 지시 색상 일치율은 50.0%였고 40회 모두 오른팔을 썼다. 조작 성능과 언어 지시 추종의 괴리[6,8]가 양팔 이동 조작에서도 나타났으며, <b>두 능력은 따로 평가해야 한다.</b></p>
+  <p class="small" style="margin-top:3mm"><b style="color:var(--ink)">한계</b> 모델당 40회·단일 시드, 입력 교체 분석은 학습 데이터 대상, 단일 장면·단일 작업.<br><b style="color:var(--ink)">향후</b> 짝 에피소드 일부를 빼고 재학습해 에피소드별 미세한 차이에 의존하는지 확인하고, 주사위 배치와 초기 상태를 다양화한다.</p>
+  </div>
+
+  <h2 style="font-size:10mm; margin-top:10mm">참고문헌</h2>
+  <ol class="refs">
+    <li>Y. Yu et al., Benchmarking VLA Models on SO-101, arXiv:2606.08881, 2026.</li>
+    <li>M. Shukor et al., SmolVLA, arXiv:2506.01844, 2025.</li>
+    <li>T. Z. Zhao et al., Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware, RSS 2023.</li>
+    <li>Z. Fu et al., Mobile ALOHA, CoRL 2024.</li>
+    <li>S. Fei et al., LIBERO-Plus, arXiv:2510.13626, 2025.</li>
+    <li>D. Emukpere et al., Robust Skills, Brittle Grounding, arXiv:2602.24143, 2026.</li>
+    <li>Y. Fang et al., When Vision Overrides Language, arXiv:2602.17659, 2026.</li>
+    <li>S. Jiang et al., Encoded but Not in Control, arXiv:2610.06235, 2026.</li>
+    <li>G. Wang, XLeRobot, GitHub, 2025.</li>
+    <li>R. Cadene et al., LeRobot, GitHub, 2024.</li>
+    <li>C. Wen et al., Fighting Copycat Agents in Behavioral Cloning, NeurIPS 2020.</li>
+  </ol>
+</section>
+</main>
+</body>
+</html>
