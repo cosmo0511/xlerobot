@@ -224,8 +224,7 @@ PAD = 2.6        # 박스 안쪽 여백
 IW = CW - 2 * PAD
 BODY = 36        # 본문 글자 (실물 pt)
 SMALL = 30
-KEY_H = 7.2
-TOP = HEAD + 0.6 + KEY_H + 3.0
+TOP = HEAD + 4.5
 BOTTOM = 171.5
 
 col_x = [M, M + CW + GAP]
@@ -277,13 +276,7 @@ def O(t):
     return (t, {"bold": True, "color": "vla"})
 
 
-# ---------------------------- 핵심 메시지 ----------------------------
-rect(0, HEAD + 0.6, W, KEY_H, fill=C["tint"])
-text(M, HEAD + 0.6, W - 2 * M, KEY_H,
-     [[N("조작은 거의 완벽했지만, 언어 지시와 관계없이 늘 같은 팔을 썼다")]],
-     size=60, color="dark", align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE, bold=True, spacing=1.0)
-
-GV = 2.3   # 박스 사이 세로 간격
+GV = 3.5   # 박스 사이 세로 간격
 
 
 def caption(bx, s_):
@@ -424,7 +417,7 @@ cd = CategoryChartData()
 cd.categories = ["잡음", "지시문", "영상", "관절 상태"]
 cd.add_series("분기 전", (0.6, 1.3, 58.7, 45.2))
 cd.add_series("분기 후", (0.0, 0.0, 8.7, 91.3))
-CH2 = 21
+CH2 = 23
 gf = sh.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, cm(bx.cx - 0.6), cm(bx.y), cm(IW + 1.2), cm(CH2), cd)
 ch = gf.chart
 ch.font.size = pt(28); ch.font.name = FONT
