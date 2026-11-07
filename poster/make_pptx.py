@@ -168,10 +168,10 @@ _F = {}
 
 
 def est_lines(s, size, width):
-    """실제 폰트(Bold, 보수적)로 단어 단위 줄바꿈을 흉내 내 줄 수를 센다."""
+    """실제 폰트(Regular)로 단어 단위 줄바꿈을 흉내 내 줄 수를 센다."""
     key = round(size * 4)
     if key not in _F:
-        _F[key] = ImageFont.truetype(os.path.join(HERE, "fonts/Pretendard-SemiBold.ttf"), size * 4)
+        _F[key] = ImageFont.truetype(os.path.join(HERE, "fonts/Pretendard-Regular.ttf"), size * 4)
     f = _F[key]
     maxw = width / 2.54 * 72 * 4 * 0.94  # 맑은 고딕이 조금 더 넓어 여유를 둠
     n, cur = 1, 0.0
@@ -200,21 +200,21 @@ def est_h(paras, size, width, spacing=1.2, bullet=False):
     for p in paras:
         s = p if isinstance(p, str) else "".join(t for t, _ in p)
         n += est_lines(s, size, width - (1.25 if bullet else 0))
-    return n * em * spacing * 1.2  # Pretendard 기본 줄 높이 ≈ 1.2em
+    return n * em * spacing * 1.16  # Pretendard 줄 높이 (LibreOffice ≈1.12, PowerPoint 여유 포함)
 
 
 # ============================ 헤더 ============================
-HEAD = 33
+HEAD = 29
 rect(0, 0, W, HEAD, fill=C["main"])
 # 장식: 오른쪽에 옅은 원호 (로봇팔 관절 느낌의 절제된 장식)
 rect(0, HEAD, W, 0.6, fill=C["dark"])
 
-text(6, 5.2, 90, 13, [[("양팔 이동 조작 정책의 조작 성능과", {})], [("언어 지시 추종의 괴리", {})]],
+text(6, 4.0, 90, 13, [[("양팔 이동 조작 정책의 조작 성능과", {})], [("언어 지시 추종의 괴리", {})]],
      size=150, color="FFFFFF", font=FONT_XB, spacing=1.08)
-text(6, 22.6, 56, 6, [[("Dissociation between Manipulation Performance and Language Instruction Following", {})], [("in a Bimanual Mobile Manipulation Policy", {})]],
+text(6, 19.6, 56, 6, [[("Dissociation between Manipulation Performance and Language Instruction Following", {})], [("in a Bimanual Mobile Manipulation Policy", {})]],
      size=40, color="DCE6F4", spacing=1.25)
-text(58, 23.2, 36, 3, [[("김미송*, 김송연*, 최명기*, 김현우†, 조혜경*", {})]], size=46, color="FFFFFF", align=PP_ALIGN.RIGHT, bold=True)
-text(58, 26.8, 36, 3, [[("*한성대학교 AI응용학과   †주식회사 로보시지", {})]], size=38, color="DCE6F4", align=PP_ALIGN.RIGHT)
+text(58, 20.0, 36, 3, [[("김미송*, 김송연*, 최명기*, 김현우†, 조혜경*", {})]], size=46, color="FFFFFF", align=PP_ALIGN.RIGHT, bold=True)
+text(58, 23.6, 36, 3, [[("*한성대학교 AI응용학과   †주식회사 로보시지", {})]], size=38, color="DCE6F4", align=PP_ALIGN.RIGHT)
 
 # ============================ 본문 레이아웃 ============================
 M = 6            # 좌우 바깥 여백
@@ -222,9 +222,9 @@ GAP = 3          # 단 사이
 CW = (W - 2 * M - GAP) / 2   # 단 너비 42.5
 PAD = 2.6        # 박스 안쪽 여백
 IW = CW - 2 * PAD
-BODY = 36        # 본문 글자 (실물 pt)
+BODY = 32        # 본문 글자 (실물 pt)
 SMALL = 30
-TOP = HEAD + 4.5
+TOP = HEAD + 3.8
 BOTTOM = 171.5
 
 col_x = [M, M + CW + GAP]
@@ -246,8 +246,9 @@ class Box:
 
     def para(self, paras, size=BODY, color="ink", spacing=1.2, bullet=False, after=0.7, width=None, x=None):
         w = width or IW
-        h = est_h(paras, size, w, spacing, bullet)
-        ps = [dict(runs=p, bullet=bullet) for p in paras]
+        PG = 16  # 문단 사이 간격 (실물 pt)
+        h = est_h(paras, size, w, spacing, bullet) + (len(paras) - 1) * PG / 72 * 2.54
+        ps = [dict(runs=p, bullet=bullet, after=PG if k < len(paras) - 1 else 0) for k, p in enumerate(paras)]
         text(x if x is not None else self.cx, self.y, w, h + 0.5, ps, size=size, color=color, spacing=spacing)
         self.y += h + after
         return h
@@ -276,18 +277,20 @@ def O(t):
     return (t, {"bold": True, "color": "vla"})
 
 
-GV = 3.5   # 박스 사이 세로 간격
+GV = 2.2   # 박스 사이 세로 간격
 
 
 def caption(bx, s_):
-    bx.para([[N(s_)]], size=30, color="sub", spacing=1.1, after=0.2)
+    bx.para([[N(s_)]], size=27, color="sub", spacing=1.1, after=0.2)
 
 
 # ---------------------------- 왼쪽 단 ----------------------------
 y = TOP
 bx = Box(0, y, "연구 배경 및 목적")
-bx.para([[N("저가형 로봇의 VLA 정책 평가는 주로 고정형 단팔에서 이루어졌고, 사전학습된 SmolVLA가 모방학습 정책 ACT보다 대체로 나은 조작 성능을 보인다고 보고되었다. 한편 조작 성공률이 높아도 언어 지시를 따른다고 볼 수 없다는 보고가 이어지고 있다.")],
-         [N("양팔 로봇은 목표 물체에 따라 어느 팔을 쓸지 골라야 하므로, 언어 지시가 행동 결정에 반영되는지 직접 확인할 수 있다.")]], after=1.2)
+bx.para([[N("저가형 로봇의 VLA(Vision-Language-Action) 정책 평가는 주로 고정형 단팔에서 이루어졌다. SO-101 비교 연구에서는 사전학습된 SmolVLA가 모방학습 정책인 ACT보다 대체로 우수한 조작 성능을 보였고, Mobile ALOHA는 이동 베이스와 양팔을 하나의 정책으로 학습했으나 언어 지시는 사용하지 않았다.")],
+         [N("최근에는 높은 조작 성공률이 언어 지시 추종을 보장하지 않는다는 문제가 제기되고 있다. 입력 교란 분석에서 언어 지시의 영향은 제한적이었고, 언어 지시만 바꾸는 반사실적 실험에서는 시각 단서가 언어보다 행동 선택에 강하게 작용하였다.")],
+         [N("양팔 로봇은 목표 물체에 따라 사용할 팔을 골라야 하므로, 언어 지시가 행동 결정에 반영되는지 직접 확인할 수 있다. 본 연구는 XLeRobot 기반 실제 양팔 이동 로봇에서 이를 평가한다.")]], after=1.2)
+bx.gap(-1.5)  # 첫 문단이 추정보다 한 줄 짧게 렌더링됨 (괄호 속 긴 영문)
 for tag, q in [("RQ1", "SmolVLA가 ACT보다 높은 조작 성능을 보이는가?"), ("RQ2", "언어 지시에 따라 올바른 팔을 선택하는가?")]:
     pill(bx.cx, bx.y, 6.2, 2.5, tag, size=36, fill="main", color="FFFFFF")
     text(bx.cx + 7.2, bx.y + 0.1, IW - 7.2, 2.5, [[N(q)]], size=BODY, spacing=1.1, anchor=MSO_ANCHOR.MIDDLE)
@@ -297,7 +300,7 @@ bx.para([[N("또한 팔 선택 분기 전후로 언어·영상·관절 상태 �
 y = bx.close() + GV
 
 bx = Box(0, y, "시스템 구성")
-bx.para([[N("XLeRobot 기반 SO-ARM101 양팔과 3-옴니휠 베이스를 사용하였다. 행동·관측 상태는 양팔 관절 12개와 베이스 속도(x, y, θ) 3개의 15차원이고, 관측에 카메라 4대가 더해진다. 학습·추론은 LeRobot을 사용하였다.")]], after=1.4)
+bx.para([[N("로봇은 SO-ARM101 양팔과 3-옴니휠 베이스로 구성된다. 행동과 관측 상태는 양팔 관절 12개와 베이스 속도(x, y, θ) 3개의 15차원이며, 관측에는 카메라 4대(상단·베이스·양 손목, 30 fps)가 더해진다. 라즈베리파이는 연산 없이 센서·모터를 중계하고, PC가 정책을 실행해 행동 청크를 만든 뒤 30 Hz로 1스텝씩 보낸다. 명령이 500 ms 이상 끊기면 호스트가 팔을 고정하고 바퀴를 멈춘다. 학습·추론은 LeRobot을 사용하였다.")]], after=1.4)
 fx, fy = bx.cx, bx.y
 bw, bh = 14.2, 15.2
 for i, (ttl, col, lines_) in enumerate([
@@ -323,7 +326,7 @@ caption(bx, "그림 1. 분산 제어 구조. 무선은 평균 812 ms 지연으�
 y = bx.close() + GV
 
 bx = Box(0, y, "과제 및 실험 설정")
-bx.para([[N("로봇은 1 m 앞 책상까지 이동한 뒤, 좌우에 놓인 빨강·노랑 주사위 중 지시된 색을 그쪽 팔로 집어 바구니에 넣는다. 두 주사위가 늘 함께 있어 영상만으로는 어느 팔을 써야 할지 정할 수 없다.")]], after=1.2)
+bx.para([[N("로봇은 1 m 앞 책상까지 이동한 뒤, 좌우에 놓인 빨강·노랑 주사위 중 지시된 색을 그쪽 팔로 집어 바구니에 넣는다. 지시문은 색 단어 하나만 다르고 두 주사위가 늘 함께 있어, 영상만으로는 어느 팔을 써야 할지 정할 수 없다.")]], after=1.2)
 
 # ---- 그림 2: 같은 장면, 다른 지시 -> 다른 팔 ----
 fx, fy = bx.cx, bx.y
@@ -370,9 +373,9 @@ bx.y = fy + PH + 1.0
 caption(bx, "그림 2. 같은 장면이라도 지시문의 색 단어에 따라 써야 하는 팔이 바뀐다 (좌우 배치는 시행마다 바뀜)")
 bx.gap(0.8)
 for lab, body in [
-    ("데이터", "텔레오퍼레이션 104 에피소드(평균 38.2초), 색상×팔 26/26/26/26. 두 팔 동작은 중앙값 23.6초에서 갈라진다."),
-    ("학습", "ACT·SmolVLA 같은 데이터, batch 16, 80k 스텝"),
-    ("평가", "모델당 40회(배치 2 × 시작 위치 2 × 지시 2, 각 5회), 단계별 독립 판정, Fisher 정확 검정·이항 검정"),
+    ("데이터", "텔레오퍼레이션으로 104 에피소드(평균 38.2초)를 수집했고 색상×팔은 26/26/26/26으로 균등하다. 두 팔의 동작은 중앙값 23.6초에서 갈라지며, 그 전까지는 지시와 무관하게 행동이 같다."),
+    ("학습", "ACT와 SmolVLA를 같은 데이터로 batch 16, 80k 스텝 학습하였다."),
+    ("평가", "모델당 40회(주사위 배치 2 × 시작 위치 2 × 지시 2, 각 5회). 단계별 성공을 독립 판정하고 Fisher 정확 검정과 이항 검정으로 비교하였다."),
 ]:
     text(bx.cx, bx.y, IW, 2, [[(lab, {"bold": True, "color": "main"})]], size=38, spacing=1.0)
     bx.y += 2.2
@@ -386,7 +389,7 @@ cd = CategoryChartData()
 cd.categories = ["베이스 도달", "팔 움직임", "파지", "바구니 투입", "지시 색상 일치"]
 cd.add_series("ACT", (67.5, 85.0, 67.5, 62.5, None))
 cd.add_series("SmolVLA", (97.5, 100, 100, 97.5, 50.0))
-CH = 24
+CH = 19
 gf = sh.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, cm(bx.cx - 0.6), cm(bx.y), cm(IW + 1.2), cm(CH), cd)
 ch = gf.chart
 ch.font.size = pt(28); ch.font.name = FONT
@@ -406,18 +409,18 @@ chart_fonts(ch)
 bx.y += CH + 0.6
 caption(bx, "그림 3. 단계별 성공률(%), 모델당 40회. ACT는 언어 입력을 받지 않으므로 지시 색상 일치는 SmolVLA만 해당")
 bx.gap(0.8)
-bx.para([[N("SmolVLA는 조작 네 단계 모두 ACT보다 유의하게 높았다(RQ1). 그러나 지시와 관계없이 늘 오른쪽 주사위를 집어, 좌우 균형 배치 탓에 일치율이 50.0%가 되었다(RQ2). 오른팔 사용은 SmolVLA 40/40, ACT 32/34.")]], after=0.6)
-bx.para([[N("조작 단계는 ACT–SmolVLA Fisher 정확 검정, 지시 색상 일치·오른팔 사용은 50% 대비 이항 검정")]],
-        size=28, color="sub", spacing=1.12, after=0.2)
+bx.para([[N("SmolVLA는 조작 네 단계 모두 ACT보다 유의하게 높았다(RQ1). 바구니 투입까지 성공한 비율은 SmolVLA 97.5%, ACT 62.5%였다. 그러나 지시 색상 일치율은 50.0%에 그쳤다(RQ2). 8개 조건 전부에서 지시와 관계없이 오른쪽 주사위를 집었고, 주사위 배치가 좌우 균형이라 산술적으로 50%가 된 것이다. ACT도 팔이 움직인 34회 중 32회(94.1%)가 오른팔이었다.")]], after=0.6)
+bx.gap(0.2)
 y = bx.close() + GV
 
 bx = Box(1, y, "입력 민감도 분석")
-bx.para([[N("학습 데이터 104 에피소드에서 입력 하나만 반대 조건으로 바꿔, SmolVLA가 예측한 팔이 뒤집히는 비율을 쟀다(분기 전 312, 후 208장면).")]], after=0.6)
+bx.para([[N("팔 선택이 어떤 입력에 민감한지 보기 위해 학습 데이터 104 에피소드에서 입력을 하나씩 교체하였다. 사용한 팔의 관절이 처음 값에서 10° 이상 벗어난 첫 프레임을 분기 시점으로 두고, 분기 0.17·0.5·1.0초 전(312장면)과 0.5·1.5초 후(208장면)를 평가하였다.")],
+         [N("예측한 50스텝 행동 청크에서 첫 스텝 대비 관절 변화량이 더 큰 팔을 예측 팔로 정했다. 같은 계산을 사람 시연에 적용하면 520장면 모두 실제 사용 팔과 일치한다. 교체 입력은 같은 색 지시이면서 주사위 배치가 반대인 짝 에피소드의 같은 시점에서 가져왔다.")]], after=0.6)
 cd = CategoryChartData()
 cd.categories = ["잡음", "지시문", "영상", "관절 상태"]
 cd.add_series("분기 전", (0.6, 1.3, 58.7, 45.2))
 cd.add_series("분기 후", (0.0, 0.0, 8.7, 91.3))
-CH2 = 23
+CH2 = 18
 gf = sh.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, cm(bx.cx - 0.6), cm(bx.y), cm(IW + 1.2), cm(CH2), cd)
 ch = gf.chart
 ch.font.size = pt(28); ch.font.name = FONT
@@ -439,19 +442,20 @@ caption(bx, "그림 4. 입력 교체 시 예측 팔이 뒤집힌 비율(%). 잡�
 bx.gap(1.0)
 LW = 8.6
 for lab, body in [
-    ("지시문", "예측 팔이 바뀐 비율 1.3%로 잡음 기준(0.6%)과 비슷해, 팔 선택을 바꾸지 못했다."),
-    ("영상·관절", "분기 전에는 영상(58.7%)과 관절 상태(45.2%), 분기 후에는 관절 상태(91.3%)의 영향이 지배적이었다."),
-    ("일반화", "학습 데이터에서는 예측 팔이 99.7% 맞았지만 실기에서는 오른팔만 썼다."),
+    ("지시문", "지시문만 바꾸면 출력이 달라져 계산에는 반영되지만, 예측 팔이 바뀐 비율은 1.3%(4/312)로 잡음 기준(0.6%)과 비슷했다."),
+    ("영상·관절", "분기 전에는 영상(58.7%)과 관절 상태(45.2%), 분기 후에는 관절 상태(91.3%)의 영향이 지배적이었다. 분기 후는 이미 움직이기 시작한 팔의 동작이 이어지는 것으로, 팔을 고른 근거로 보기는 어렵다."),
+    ("상태 복사", "관절값을 그대로 복사하기만 해도 오차가 1/4.3로 줄어(6.741→1.555) 정책이 줄인 오차의 84%에 해당한다. 상태 복사 문제와 비슷하나 직접 원인인지는 판단할 수 없다."),
+    ("일반화", "학습 데이터에서는 예측 팔이 99.7% 맞았지만 실기에서는 오른팔만 썼다. 배치가 같은 다른 에피소드 입력으로 바꿔도 51.3%·47.8%가 뒤집혀, 에피소드별 장면·자세의 미세한 차이에 반응했을 가능성이 있다."),
 ]:
     pill(bx.cx, bx.y, LW, 2.7, lab, size=34)
     bx.para([[N(body)]], x=bx.cx + LW + 1.0, width=IW - LW - 1.0, spacing=1.16, after=1.1)
 y = bx.close(extra=0.6) + GV
 
 bx = Box(1, y, "결론")
-bx.para([[N("SmolVLA는 조작 성능에서 ACT를 크게 앞섰지만, 언어 지시에 따라 팔을 고르지는 못했다. 선행 연구에서 보고된 조작 성능과 언어 지시 추종의 괴리가 양팔 이동 조작에서도 나타났으며, 두 능력은 분리해서 평가해야 한다.")]], after=1.2)
-bx.para([[("한계  ", {"bold": True, "color": "main"}), N("모델당 40회·단일 시드, 단일 장면·단일 작업")],
-         [("향후  ", {"bold": True, "color": "main"}), N("짝 에피소드를 일부 빼고 재학습, 주사위 배치·초기 상태 다양화")]],
-        size=BODY, after=0.4)
+bx.para([[N("SmolVLA는 조작 네 단계 모두 ACT보다 유의하게 높은 성공률을 보였으나, 지시 색상 일치율은 50.0%에 그쳤고 40회 모두 오른팔을 사용하였다. 입력 교체 실험에서도 지시문 변경은 예측 팔에 거의 영향을 주지 않았고, 영상과 관절 상태 변경에는 크게 반응하였다. 선행 연구에서 보고된 조작 성능과 언어 지시 추종의 괴리가 양팔 이동 조작에서도 나타나며, 두 능력은 분리해서 평가해야 한다.")]], after=1.2)
+bx.para([[("한계  ", {"bold": True, "color": "main"}), N("실기 평가는 모델당 40회·단일 시드, 입력 교체 분석은 학습 데이터 대상, 과제는 단일 장면·단일 작업이다.")],
+         [("향후  ", {"bold": True, "color": "main"}), N("같은 배치의 짝 에피소드 일부를 빼고 재학습해 에피소드별 미세한 차이에 의존하는지 확인하고, 주사위 배치와 초기 상태를 다양화해 일반화 성능을 확인할 예정이다.")]],
+        size=BODY, spacing=1.2, after=0.4)
 right_end = bx.close(extra=0.8)
 
 print(f"left_end={left_end:.1f}  right_end={right_end:.1f}  (page H={H}, 하단 여백 목표 ~174)")
