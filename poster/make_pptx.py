@@ -1,0 +1,435 @@
+"""학회 포스터 PPTX 생성 (실물 100 x 180 cm).
+
+PowerPoint 슬라이드 최대 크기(142 cm) 때문에 슬라이드는 절반인 50 x 90 cm 로 만든다.
+아래 좌표·글자 크기는 모두 '실물 기준'으로 적고 S(=0.5)를 곱해 넣는다.
+인쇄는 PDF(100 x 180 cm)로, 또는 PPTX 를 200% 로 출력.
+"""
+import math, os
+HERE = os.path.dirname(os.path.abspath(__file__))
+from pptx import Presentation
+from pptx.util import Cm, Pt, Emu
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_LABEL_POSITION
+from pptx.oxml.ns import qn
+from lxml import etree
+
+S = 0.5
+W, H = 100, 180
+FONT = "Pretendard"
+FONT_XB = "Pretendard ExtraBold"
+
+
+def rgb(h):
+    return RGBColor.from_string(h.lstrip("#"))
+
+
+C = dict(
+    main="1D4F91", dark="153B6E", tint="E4ECF7", pill="D5E2F3",
+    ink="1E2227", sub="4B525C", line="1D4F91",
+    act="1D4F91", vla="E8662E", pre="A9BAD3",
+)
+
+prs = Presentation()
+prs.slide_width = Cm(W * S)
+prs.slide_height = Cm(H * S)
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+sh = slide.shapes
+
+
+def cm(v):
+    return Cm(v * S)
+
+
+def pt(v):
+    return Pt(v * S)
+
+
+def no_line(shape):
+    shape.line.fill.background()
+
+
+def rect(x, y, w, h, fill=None, line=None, lw=4, shape=MSO_SHAPE.RECTANGLE, radius=None, dash=False):
+    s = sh.add_shape(shape, cm(x), cm(y), cm(w), cm(h))
+    if radius is not None:
+        s.adjustments[0] = radius
+    if fill:
+        s.fill.solid(); s.fill.fore_color.rgb = rgb(fill)
+    else:
+        s.fill.background()
+    if line:
+        s.line.color.rgb = rgb(line); s.line.width = pt(lw)
+        if dash:
+            s.line.dash_style = 4  # dash
+    else:
+        no_line(s)
+    s.shadow.inherit = False
+    tf = s.text_frame
+    tf.text = ""
+    return s
+
+
+def set_font(run, size, bold=False, color="ink", font=None):
+    f = run.font
+    f.size = pt(size); f.bold = bold
+    f.color.rgb = rgb(C.get(color, color))
+    name = font or FONT
+    f.name = name
+    rPr = run._r.get_or_add_rPr()
+    for tag in ("a:ea", "a:cs"):
+        el = rPr.find(qn(tag))
+        if el is None:
+            el = etree.SubElement(rPr, qn(tag))
+        el.set("typeface", name)
+
+
+def text(x, y, w, h, paras, size=40, color="ink", align=PP_ALIGN.LEFT, spacing=1.2,
+         anchor=MSO_ANCHOR.TOP, bold=False, font=None, space_after=0):
+    """paras: list of paragraphs; each paragraph = str or list of (text, opts) runs.
+    paragraph may also be dict(runs=..., bullet=True, size=.., color=..)."""
+    tb = sh.add_textbox(cm(x), cm(y), cm(w), cm(h))
+    tf = tb.text_frame
+    tf.word_wrap = True
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+    tf.vertical_anchor = anchor
+    bodyPr = tf._txBody.find(qn("a:bodyPr"))
+    for i, p in enumerate(paras):
+        opts = {}
+        if isinstance(p, dict):
+            opts = p; runs = p["runs"]
+        else:
+            runs = p
+        if isinstance(runs, str):
+            runs = [(runs, {})]
+        para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        para.alignment = opts.get("align", align)
+        para.line_spacing = opts.get("spacing", spacing)
+        if space_after or opts.get("after"):
+            para.space_after = pt(opts.get("after", space_after))
+        if opts.get("before"):
+            para.space_before = pt(opts["before"])
+        psize = opts.get("size", size)
+        if opts.get("bullet"):
+            pPr = para._p.get_or_add_pPr()
+            ind = int(cm(1.25))
+            pPr.set("marL", str(ind)); pPr.set("indent", str(-ind))
+            bu = etree.SubElement(pPr, qn("a:buChar")); bu.set("char", "•")
+        for t, o in runs:
+            r = para.add_run(); r.text = t
+            set_font(r, o.get("size", psize), o.get("bold", opts.get("bold", bold)),
+                     o.get("color", opts.get("color", color)), o.get("font", font))
+    return tb
+
+
+def line(x1, y1, x2, y2, color="sub", lw=4, arrow=False, dash=False):
+    c = sh.add_connector(MSO_CONNECTOR.STRAIGHT, cm(x1), cm(y1), cm(x2), cm(y2))
+    c.line.color.rgb = rgb(C.get(color, color)); c.line.width = pt(lw)
+    ln = c.line._get_or_add_ln()
+    if dash:
+        prst = etree.SubElement(ln, qn("a:prstDash")); prst.set("val", "dash")
+    if arrow:
+        te = etree.SubElement(ln, qn("a:tailEnd")); te.set("type", "triangle"); te.set("w", "med"); te.set("len", "med")
+    return c
+
+
+def pill(x, y, w, h, label, size=34, fill="pill", color="dark", bold=True):
+    s = rect(x, y, w, h, fill=C.get(fill, fill), shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.5)
+    tf = s.text_frame
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
+    r = p.add_run(); r.text = label
+    set_font(r, size, bold, color)
+    return s
+
+
+# ---- 텍스트 높이 대략 추정 (배치용) -------------------------------------
+from PIL import ImageFont
+_F = {}
+
+
+def est_lines(s, size, width):
+    """실제 폰트(Bold, 보수적)로 단어 단위 줄바꿈을 흉내 내 줄 수를 센다."""
+    key = round(size * 4)
+    if key not in _F:
+        _F[key] = ImageFont.truetype(os.path.join(HERE, "fonts/Pretendard-SemiBold.ttf"), size * 4)
+    f = _F[key]
+    maxw = width / 2.54 * 72 * 4 * 0.98
+    n, cur = 1, 0.0
+    sp = f.getlength(" ")
+    for word in s.split(" "):
+        wl = f.getlength(word)
+        add = wl if cur == 0 else sp + wl
+        if cur + add <= maxw:
+            cur += add
+        elif wl <= maxw:
+            n += 1; cur = wl
+        else:  # 아주 긴 단어: 글자 단위
+            n += 1; cur = 0
+            for ch in word:
+                cl = f.getlength(ch)
+                if cur + cl > maxw:
+                    n += 1; cur = cl
+                else:
+                    cur += cl
+    return n
+
+
+def est_h(paras, size, width, spacing=1.2, bullet=False):
+    em = size / 72 * 2.54
+    n = 0
+    for p in paras:
+        s = p if isinstance(p, str) else "".join(t for t, _ in p)
+        n += est_lines(s, size, width - (1.25 if bullet else 0))
+    return n * em * spacing * 1.2  # Pretendard 기본 줄 높이 ≈ 1.2em
+
+
+# ============================ 헤더 ============================
+HEAD = 33
+rect(0, 0, W, HEAD, fill=C["main"])
+# 장식: 오른쪽에 옅은 원호 (로봇팔 관절 느낌의 절제된 장식)
+rect(0, HEAD, W, 0.6, fill=C["dark"])
+
+text(6, 5.2, 90, 13, [[("양팔 이동 조작 정책의 조작 성능과", {})], [("언어 지시 추종의 괴리", {})]],
+     size=150, color="FFFFFF", font=FONT_XB, spacing=1.08)
+text(6, 22.6, 56, 6, [[("Dissociation between Manipulation Performance and Language Instruction Following", {})], [("in a Bimanual Mobile Manipulation Policy", {})]],
+     size=40, color="DCE6F4", spacing=1.25)
+text(58, 23.2, 36, 3, [[("김미송*, 김송연*, 최명기*, 김현우†, 조혜경*", {})]], size=46, color="FFFFFF", align=PP_ALIGN.RIGHT, bold=True)
+text(58, 26.8, 36, 3, [[("*한성대학교 AI응용학과   †주식회사 로보시지", {})]], size=38, color="DCE6F4", align=PP_ALIGN.RIGHT)
+
+# ============================ 본문 레이아웃 ============================
+M = 6            # 좌우 바깥 여백
+GAP = 3          # 단 사이
+CW = (W - 2 * M - GAP) / 2   # 단 너비 42.5
+PAD = 2.6        # 박스 안쪽 여백
+IW = CW - 2 * PAD
+BODY = 37        # 본문 글자 (실물 pt)
+SMALL = 30
+TOP = HEAD + 4.5
+BOTTOM = 171.5
+
+col_x = [M, M + CW + GAP]
+
+
+class Box:
+    """둥근 테두리 박스 안에 위에서부터 차례로 쌓는다."""
+
+    def __init__(self, col, y, title):
+        self.x = col_x[col]; self.y0 = y
+        self.cx = self.x + PAD
+        self.y = y + 2.3
+        text(self.cx, self.y, IW, 4, [[(title, {})]], size=86, color="main", font=FONT_XB, spacing=1.0)
+        self.y += 4.6
+        self.items = []
+
+    def gap(self, v):
+        self.y += v
+
+    def para(self, paras, size=BODY, color="ink", spacing=1.2, bullet=False, after=0.7, width=None, x=None):
+        w = width or IW
+        h = est_h(paras, size, w, spacing, bullet)
+        ps = [dict(runs=p, bullet=bullet) for p in paras]
+        text(x if x is not None else self.cx, self.y, w, h + 0.5, ps, size=size, color=color, spacing=spacing)
+        self.y += h + after
+        return h
+
+    def sub(self, label, size=50):
+        text(self.cx, self.y, IW, 2.6, [[("▶ " + label, {})]], size=size, color="main", bold=True, spacing=1.0)
+        self.y += 2.9
+
+    def close(self, extra=1.6):
+        h = self.y - self.y0 + extra
+        b = rect(self.x, self.y0, CW, h, line=C["line"], lw=5, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.035)
+        # 테두리를 맨 뒤로
+        sp = b._element; sp.getparent().remove(sp); sh._spTree.insert(2, sp)
+        return self.y0 + h
+
+
+def B(t):
+    return (t, {"bold": True})
+
+
+def N(t):
+    return (t, {})
+
+
+def O(t):
+    return (t, {"bold": True, "color": "vla"})
+
+
+# ---------------------------- 왼쪽 단 ----------------------------
+y = TOP
+bx = Box(0, y, "연구 배경")
+bx.para([[N("저가형 로봇의 VLA 정책 평가는 주로 고정형 단팔에서 이루어졌다. SO-101 비교 연구[1]에서는 SmolVLA[2]가 ACT[3]보다 대체로 나은 조작 성능을 보였고, Mobile ALOHA[4]는 이동 베이스와 양팔을 한 정책으로 학습했지만 언어 지시는 쓰지 않았다.")],
+         [N("최근에는 조작 성공률이 높아도 언어 지시를 따른다고 볼 수 없다는 보고가 이어지고 있다[5–8].")]], after=0.3)
+y = bx.close() + 2.0
+
+bx = Box(0, y, "연구 목적")
+bx.para([[N("양팔 로봇은 목표 물체에 따라 "), B("어느 팔을 쓸지"), N(" 골라야 하므로, 언어 지시가 행동 결정에 반영되는지 직접 확인할 수 있다.")]], after=1.2)
+for tag, q in [("RQ1", "SmolVLA가 ACT보다 높은 조작 성능을 보이는가?"), ("RQ2", "언어 지시에 따라 올바른 팔을 선택하는가?")]:
+    pill(bx.cx, bx.y, 6.2, 2.5, tag, size=36, fill="main", color="FFFFFF")
+    text(bx.cx + 7.2, bx.y + 0.15, IW - 7.2, 2.5, [[B(q)]], size=BODY, spacing=1.2, anchor=MSO_ANCHOR.MIDDLE)
+    bx.gap(3.3)
+bx.gap(0.4)
+bx.para([[N("또한 팔 선택 분기 전후로 언어·영상·관절 상태 입력을 하나씩 바꿔 정책이 무엇에 반응하는지 분석한다.")]], after=0.3)
+y = bx.close() + 2.0
+
+bx = Box(0, y, "시스템 구성")
+bx.para([[N("XLeRobot[9] 기반 SO-ARM101 양팔과 3-옴니휠 베이스. 행동·관측 상태는 양팔 관절 12개와 베이스 속도(x, y, θ) 3개의 "), B("15차원"), N("이고, 관측에 카메라 4대가 더해진다. 학습·추론은 LeRobot[10]을 사용하였다.")]], after=1.4)
+# 그림: 파이 <-> PC
+fx, fy = bx.cx, bx.y
+bw, bh = 14.2, 15.2
+for i, (ttl, col, lines_) in enumerate([
+    ("라즈베리파이", C["main"], ["로봇 호스트 · 연산 없음", "", "카메라 4대", "640×480, 30 fps", "", "모터 15개", "양팔 12 · 바퀴 3"]),
+    ("PC (GPU)", C["vla"], ["정책 실행", "", "ACT / SmolVLA", "행동 청크 생성", "", "1스텝씩 전송", "제어 주기 30 Hz"]),
+]):
+    xx = fx if i == 0 else fx + IW - bw
+    rect(xx, fy, bw, bh, fill="FFFFFF", line=col, lw=5, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.06)
+    hd = rect(xx, fy, bw, 3.0, fill=col, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.3)
+    text(xx, fy + 0.35, bw, 2.4, [[B(ttl)]], size=40, color="FFFFFF", align=PP_ALIGN.CENTER, spacing=1.0)
+    paras = []
+    for k, l in enumerate(lines_):
+        bold = l in ("카메라 4대", "모터 15개", "ACT / SmolVLA", "1스텝씩 전송")
+        paras.append(dict(runs=[(l if l else " ", {"bold": bold})], size=31 if l else 14, color="ink" if bold else "sub", spacing=1.18))
+    text(xx + 1.0, fy + 4.0, bw - 2.0, bh - 4.5, paras, size=31, align=PP_ALIGN.CENTER)
+mx1, mx2 = fx + bw + 0.6, fx + IW - bw - 0.6
+line(mx1, fy + 5.6, mx2, fy + 5.6, color="ink", lw=5, arrow=True)
+text(mx1, fy + 2.9, mx2 - mx1, 2.4, [[B("관측")], [N("영상 + 관절")]], size=29, align=PP_ALIGN.CENTER, spacing=1.05)
+line(mx2, fy + 10.6, mx1, fy + 10.6, color="ink", lw=5, arrow=True)
+text(mx1, fy + 11.1, mx2 - mx1, 2.4, [[B("행동")], [N("15차원")]], size=29, align=PP_ALIGN.CENTER, spacing=1.05)
+bx.y = fy + bh + 1.2
+bx.para([[B("유선"), N(" 왕복 평균 2.8 ms(최대 9.9 ms), 손실 0%   "), B("무선"), N(" 평균 812 ms 지연 → 평가는 모두 유선·30 Hz 고정")]],
+        size=SMALL, color="sub", spacing=1.12, after=0.2)
+y = bx.close() + 2.0
+
+bx = Box(0, y, "과제 및 실험 설정")
+# 과제 배치 그림 (위에서 본 모습)
+fx, fy = bx.cx, bx.y
+rx, ry = fx + 3.2, fy + 5.2
+rect(rx - 3, ry - 3, 6, 6, line=C["ink"], lw=5, shape=MSO_SHAPE.OVAL)
+rect(rx - 2.0, ry - 4.4, 1.1, 2.6, fill=C["ink"]); rect(rx + 0.9, ry - 4.4, 1.1, 2.6, fill=C["ink"])
+text(rx - 3, ry + 3.3, 6, 1.6, [[N("로봇")]], size=28, align=PP_ALIGN.CENTER)
+dx = fx + 19.5
+line(rx + 3.6, ry, dx - 0.6, ry, color="ink", lw=5, arrow=True, dash=True)
+text(rx + 3.6, ry - 2.6, dx - rx - 4.2, 2, [[B("1 m 주행")]], size=32, align=PP_ALIGN.CENTER)
+dw = IW - (dx - fx)
+rect(dx, fy, dw, 11, fill="F2F4F7", line="9AA3AF", lw=3)
+text(dx + dw - 6, fy + 0.4, 5.6, 1.5, [[N("책상")]], size=26, color="sub", align=PP_ALIGN.RIGHT)
+rect(dx + 1.6, fy + 1.2, 2.4, 2.4, fill="D7312B")
+rect(dx + 1.6, fy + 7.4, 2.4, 2.4, fill="F2C318")
+text(rx + 3.6, ry + 1.2, dx - rx - 4.2, 3, [[N("주사위 좌우 배치는")], [N("시행마다 바뀜")]], size=26, color="sub", spacing=1.05, align=PP_ALIGN.CENTER)
+rect(dx + dw - 7.2, fy + 3.7, 5.6, 3.6, line=C["ink"], lw=5)
+text(dx + dw - 7.2, fy + 7.7, 5.6, 1.6, [[N("바구니")]], size=26, align=PP_ALIGN.CENTER)
+bx.y = fy + 12.4
+bx.para([[N("1 m 앞 책상까지 이동한 뒤 좌우에 놓인 주사위 중 "), B("지시된 색을 그쪽 팔로"), N(" 집어 바구니에 넣는다. 지시문은 색 단어 하나만 다르고 두 주사위가 늘 함께 있어, 영상만으로는 대상을 정할 수 없다.")]], after=1.0)
+for lab, body in [
+    ("데이터", [N("텔레오퍼레이션 "), B("104 에피소드"), N("(평균 38.2초), 색상×팔 26/26/26/26. 두 팔 동작은 중앙값 23.6초에서 갈라진다.")]),
+    ("학습", [N("ACT·SmolVLA 같은 데이터, batch 16, 80k 스텝")]),
+    ("평가", [N("모델당 40회(배치 2 × 시작 위치 2 × 지시 2, 각 5회), 단계별 독립 판정, Fisher 정확 검정·이항 검정")]),
+]:
+    text(bx.cx, bx.y, IW, 2, [[(lab, {"bold": True, "color": "main"})]], size=40, spacing=1.0)
+    bx.y += 2.2
+    bx.para([body], after=0.9)
+left_end = bx.close(extra=0.9)
+
+# ---------------------------- 오른쪽 단 ----------------------------
+y = TOP
+bx = Box(1, y, "연구 결과")
+bx.sub("단계별 성공률 (모델당 40회)")
+cd = CategoryChartData()
+cd.categories = ["베이스 도달", "팔 움직임", "파지", "바구니 투입", "지시 색상 일치"]
+cd.add_series("ACT", (67.5, 85.0, 67.5, 62.5, None))
+cd.add_series("SmolVLA", (97.5, 100, 100, 97.5, 50.0))
+CH = 20
+gf = sh.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, cm(bx.cx - 0.6), cm(bx.y), cm(IW + 1.2), cm(CH), cd)
+ch = gf.chart
+ch.font.size = pt(28); ch.font.name = FONT
+ch.has_legend = True; ch.legend.position = XL_LEGEND_POSITION.TOP; ch.legend.include_in_layout = False
+ch.legend.font.size = pt(30)
+va = ch.value_axis; va.maximum_scale = 100; va.minimum_scale = 0; va.major_unit = 25
+va.has_major_gridlines = True; va.major_gridlines.format.line.color.rgb = rgb("E1E5EA")
+va.format.line.fill.background(); va.tick_labels.font.size = pt(26)
+ca = ch.category_axis; ca.tick_labels.font.size = pt(30); ca.format.line.color.rgb = rgb("888888")
+plot = ch.plots[0]; plot.gap_width = 55; plot.overlap = -8
+plot.has_data_labels = True
+dl = plot.data_labels; dl.font.size = pt(27); dl.number_format = '0.0'; dl.number_format_is_linked = False
+dl.position = XL_LABEL_POSITION.OUTSIDE_END
+for s_, col in zip(plot.series, [C["act"], C["vla"]]):
+    s_.format.fill.solid(); s_.format.fill.fore_color.rgb = rgb(col)
+bx.y += CH + 0.6
+# 결과 요약 원형 배지 3개
+R = 6.4
+labels = [
+    ("97.5%", "바구니 투입", "SmolVLA (ACT 62.5%)", "main"),
+    ("50.0%", "지시 색상 일치", "우연 수준 (p = 1.0)", "vla"),
+    ("40/40", "오른팔 사용", "지시와 관계없이", "vla"),
+]
+step = IW / 3
+for i, (big, l1, l2, col) in enumerate(labels):
+    cx = bx.cx + step * i + (step - R) / 2
+    o = rect(cx, bx.y, R, R, fill=C["tint"] if col == "main" else "FCE6DA", shape=MSO_SHAPE.OVAL)
+    text(cx - 1, bx.y + 1.85, R + 2, 3, [[(big, {"bold": True, "color": col})]], size=52, align=PP_ALIGN.CENTER, font=FONT_XB, spacing=1.0)
+    text(bx.cx + step * i, bx.y + R + 0.5, step, 4, [[B(l1)], [(l2, {"color": "sub", "size": 29})]], size=33, align=PP_ALIGN.CENTER, spacing=1.18)
+bx.y += R + 5.0
+bx.para([[N("SmolVLA는 조작 네 단계 모두 ACT보다 유의하게 높았다("), B("RQ1"), N("). 그러나 8개 조건 전부에서 지시와 관계없이 오른쪽 주사위를 집었고, 배치가 좌우 균형이라 일치율이 50%가 되었다("), B("RQ2"), N("). ACT도 94.1%가 오른팔이었다.")]], after=0.6)
+bx.para([[N("ACT는 언어 입력 없음. 조작 단계는 Fisher 정확 검정(p < 0.001, 팔 움직임 p = 0.026), 색상 일치·오른팔 사용은 50% 대비 이항 검정.")]],
+        size=28, color="sub", spacing=1.12, after=0.2)
+y = bx.close() + 2.0
+
+bx = Box(1, y, "입력 민감도 분석")
+bx.para([[N("학습 데이터 104 에피소드에서 입력 하나만 반대 조건으로 바꿔 SmolVLA의 예측 팔이 뒤집히는 비율을 쟀다(분기 전 312, 후 208장면).")]], after=0.6)
+cd = CategoryChartData()
+cd.categories = ["잡음", "지시문", "영상", "관절 상태"]
+cd.add_series("분기 전", (0.6, 1.3, 58.7, 45.2))
+cd.add_series("분기 후", (0.0, 0.0, 8.7, 91.3))
+CH2 = 18
+gf = sh.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, cm(bx.cx - 0.6), cm(bx.y), cm(IW + 1.2), cm(CH2), cd)
+ch = gf.chart
+ch.font.size = pt(28); ch.font.name = FONT
+ch.has_legend = True; ch.legend.position = XL_LEGEND_POSITION.TOP; ch.legend.include_in_layout = False
+ch.legend.font.size = pt(30)
+va = ch.value_axis; va.maximum_scale = 100; va.minimum_scale = 0; va.major_unit = 25
+va.has_major_gridlines = True; va.major_gridlines.format.line.color.rgb = rgb("E1E5EA")
+va.tick_labels.font.size = pt(26); va.format.line.fill.background()
+ca = ch.category_axis; ca.reverse_order = True; ca.tick_labels.font.size = pt(29)
+plot = ch.plots[0]; plot.gap_width = 45; plot.overlap = -5
+plot.has_data_labels = True
+dl = plot.data_labels; dl.font.size = pt(27); dl.number_format = '0.0'; dl.number_format_is_linked = False
+dl.position = XL_LABEL_POSITION.OUTSIDE_END
+for s_, col in zip(plot.series, [C["pre"], C["dark"]]):
+    s_.format.fill.solid(); s_.format.fill.fore_color.rgb = rgb(col)
+bx.y += CH2 + 0.4
+text(bx.cx, bx.y, IW, 1.6, [[N("예측 팔이 뒤집힌 비율(%). 잡음은 난수 시드만, 나머지는 반대 색·반대 배치 입력으로 교체")]], size=27, color="sub", align=PP_ALIGN.CENTER)
+bx.y += 2.6
+LW = 8.6
+for lab, body in [
+    ("지시문", [N("예측 팔이 바뀐 비율 "), B("1.3%"), N("로 잡음 기준(0.6%)과 비슷. 계산에는 들어가지만 팔 선택은 바꾸지 못했다.")]),
+    ("영상·관절", [N("분기 전에는 영상(58.7%)과 관절 상태(45.2%), 분기 후에는 관절 상태("), B("91.3%"), N(")의 영향이 지배적이었다.")]),
+    ("일반화", [N("학습 데이터에서는 예측 팔이 "), B("99.7%"), N(" 맞았지만 실기에서는 오른팔만 썼다. 상태 복사 문제[11]와 비슷한 구조이다.")]),
+]:
+    pill(bx.cx, bx.y, LW, 2.7, lab, size=34)
+    h = bx.para([body], x=bx.cx + LW + 1.0, width=IW - LW - 1.0, spacing=1.16, after=1.0)
+right_mid = bx.close(extra=0.6)
+y = right_mid + 2.0
+
+bx = Box(1, y, "결론")
+bx.para([[N("SmolVLA는 조작 성능에서 ACT를 크게 앞섰지만, 언어 지시에 따라 팔을 고르지는 못했다. 조작 성능과 언어 지시 추종의 괴리[6,8]가 양팔 이동 조작에서도 나타났으며, "), B("두 능력은 분리해서 평가해야 한다.")]], after=1.0)
+bx.para([[("한계  ", {"bold": True, "color": "main"}), N("모델당 40회·단일 시드, 입력 교체 분석은 학습 데이터 대상, 단일 장면·단일 작업")],
+         [("향후  ", {"bold": True, "color": "main"}), N("짝 에피소드 일부를 빼고 재학습해 미세한 장면 차이 의존 여부 확인, 주사위 배치·초기 상태 다양화")]],
+        size=34, spacing=1.16, after=0.4)
+right_end = bx.close(extra=0.8)
+
+# ---------------------------- 참고문헌 ----------------------------
+refs = ("[1] Y. Yu et al., Benchmarking VLA Models on SO-101, arXiv:2606.08881, 2026.  [2] M. Shukor et al., SmolVLA, arXiv:2506.01844, 2025.  "
+        "[3] T. Z. Zhao et al., Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware, RSS 2023.  [4] Z. Fu et al., Mobile ALOHA, CoRL 2024.  "
+        "[5] S. Fei et al., LIBERO-Plus, arXiv:2510.13626, 2025.  [6] D. Emukpere et al., Robust Skills, Brittle Grounding, arXiv:2602.24143, 2026.  "
+        "[7] Y. Fang et al., When Vision Overrides Language, arXiv:2602.17659, 2026.  [8] S. Jiang et al., Encoded but Not in Control, arXiv:2610.06235, 2026.  "
+        "[9] G. Wang, XLeRobot, GitHub, 2025.  [10] R. Cadene et al., LeRobot, GitHub, 2024.  [11] C. Wen et al., Fighting Copycat Agents in Behavioral Cloning, NeurIPS 2020.")
+ry0 = max(left_end, right_end) + 2.0
+text(M, ry0, 12, 2, [[("참고문헌", {"bold": True, "color": "main"})]], size=40)
+text(M + 11, ry0 + 0.1, W - 2 * M - 11, 8, [[N(refs)]], size=23, color="sub", spacing=1.12)
+
+print(f"left_end={left_end:.1f}  right_end={right_end:.1f}  refs_y={ry0:.1f} (page H={H})")
+prs.save("/home/user/xlerobot/poster/poster_100x180.pptx")
