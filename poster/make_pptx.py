@@ -21,7 +21,10 @@ W, H = 100, 180
 # POSTER_FONT=malgun : 맑은 고딕 (Windows 기본, 설치 불필요) / 기본: Pretendard (PDF 인쇄용)
 MALGUN = os.environ.get("POSTER_FONT", "") == "malgun"
 FONT = "Malgun Gothic" if MALGUN else "Pretendard"
-FONT_XB = "Malgun Gothic" if MALGUN else "Pretendard ExtraBold"
+# POSTER_CANVA=1 : 캔바 가져오기용. 글꼴 이름을 "Pretendard" 하나로(굵기는 굵게 속성), 차트는 그림으로,
+#                  말풍선은 기본 도형으로 바꾼다. (캔바는 "Pretendard ExtraBold" 같은 이름·네이티브 차트를 잘 못 읽음)
+CANVA = os.environ.get("POSTER_CANVA", "") == "1"
+FONT_XB = "Malgun Gothic" if MALGUN else ("Pretendard" if CANVA else "Pretendard ExtraBold")
 EA = {"Malgun Gothic": "맑은 고딕"}
 OUT = os.environ.get("POSTER_OUT", os.path.join(HERE, "poster_100x180.pptx"))
 
@@ -80,7 +83,7 @@ def set_font(run, size, bold=False, color="ink", font=None):
     f.size = pt(size); f.bold = bold
     f.color.rgb = rgb(C.get(color, color))
     name = font or FONT
-    if MALGUN and font == FONT_XB:
+    if (MALGUN or CANVA) and font == FONT_XB:
         f.bold = True
     f.name = name
     rPr = run._r.get_or_add_rPr()
@@ -138,6 +141,21 @@ def chart_fonts(chart):
             if el is None:
                 el = etree.SubElement(d, qn(tag))
             el.set("typeface", EA.get(FONT, FONT) if tag == "a:ea" else FONT)
+
+
+import json
+CHART_BOXES = {}
+CANVA_DIR = os.path.join(HERE, "_canva")
+
+
+def as_picture(gf, name):
+    """캔바용: 차트 자리를 미리 렌더링한 그림으로 바꾼다 (make_canva.sh 가 그림을 만든다)."""
+    CHART_BOXES[name] = [gf.left, gf.top, gf.width, gf.height]
+    if CANVA:
+        rid = gf.chart_part.partname and gf._element.xpath(".//c:chart/@r:id")[0]
+        el = gf._element; el.getparent().remove(el)
+        slide.part.drop_rel(rid)
+        sh.add_picture(os.path.join(CANVA_DIR, name + ".png"), gf.left, gf.top, gf.width, gf.height)
 
 
 def line(x1, y1, x2, y2, color="sub", lw=4, arrow=False, dash=False):
@@ -337,9 +355,17 @@ for i, (word, wcol, side) in enumerate([("red", RED, "L"), ("yellow", YTXT, "R")
     px = fx + i * (PW + 1.6)
     rect(px, fy, PW, PH, fill="F7F8FA", line="C9CED6", lw=3, shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.05)
     # 지시문 말풍선
-    bub = rect(px + 1.0, fy + 1.0, PW - 2.0, 5.0, fill="FFFFFF", line=C["main"], lw=4,
-               shape=MSO_SHAPE.ROUNDED_RECTANGULAR_CALLOUT)
-    bub.adjustments[0] = -0.18; bub.adjustments[1] = 0.85
+    if CANVA:
+        rect(px + 1.0, fy + 1.0, PW - 2.0, 5.0, fill="FFFFFF", line=C["main"], lw=4,
+             shape=MSO_SHAPE.ROUNDED_RECTANGLE, radius=0.2)
+        tx = px + 1.0 + (PW - 2.0) * 0.32
+        tri = rect(tx - 0.9, fy + 5.95, 1.8, 1.4, fill="FFFFFF", line=C["main"], lw=4, shape=MSO_SHAPE.ISOSCELES_TRIANGLE)
+        tri.rotation = 180
+        rect(tx - 0.72, fy + 5.7, 1.44, 0.5, fill="FFFFFF")  # 이음매 가리기
+    else:
+        bub = rect(px + 1.0, fy + 1.0, PW - 2.0, 5.0, fill="FFFFFF", line=C["main"], lw=4,
+                   shape=MSO_SHAPE.ROUNDED_RECTANGULAR_CALLOUT)
+        bub.adjustments[0] = -0.18; bub.adjustments[1] = 0.85
     text(px + 1.6, fy + 1.15, PW - 3.2, 4.7,
          [[N("“Pick up the "), (word, {"color": wcol}), N(" dice and put it in the basket”")]],
          size=28, spacing=1.05, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
@@ -405,7 +431,7 @@ dl = plot.data_labels; dl.font.size = pt(27); dl.number_format = '0.0'; dl.numbe
 dl.position = XL_LABEL_POSITION.OUTSIDE_END
 for s_, col in zip(plot.series, [C["act"], C["vla"]]):
     s_.format.fill.solid(); s_.format.fill.fore_color.rgb = rgb(col)
-chart_fonts(ch)
+chart_fonts(ch); as_picture(gf, "chart1")
 bx.y += CH + 0.6
 caption(bx, "그림 3. 단계별 성공률(%), 모델당 40회. ACT는 언어 입력을 받지 않으므로 지시 색상 일치는 SmolVLA만 해당")
 bx.gap(0.8)
@@ -436,7 +462,7 @@ dl = plot.data_labels; dl.font.size = pt(27); dl.number_format = '0.0'; dl.numbe
 dl.position = XL_LABEL_POSITION.OUTSIDE_END
 for s_, col in zip(plot.series, [C["pre"], C["dark"]]):
     s_.format.fill.solid(); s_.format.fill.fore_color.rgb = rgb(col)
-chart_fonts(ch)
+chart_fonts(ch); as_picture(gf, "chart2")
 bx.y += CH2 + 0.5
 caption(bx, "그림 4. 입력 교체 시 예측 팔이 뒤집힌 비율(%). 잡음은 난수 시드만, 나머지는 반대 색·반대 배치 입력으로 교체")
 bx.gap(1.0)
@@ -459,4 +485,8 @@ bx.para([[("한계  ", {"bold": True, "color": "main"}), N("실기 평가는 모
 right_end = bx.close(extra=0.8)
 
 print(f"left_end={left_end:.1f}  right_end={right_end:.1f}  (page H={H}, 하단 여백 목표 ~174)")
+if not CANVA:
+    os.makedirs(CANVA_DIR, exist_ok=True)
+    json.dump({"slide_w": prs.slide_width, "slide_h": prs.slide_height, "charts": CHART_BOXES},
+              open(os.path.join(CANVA_DIR, "chart_boxes.json"), "w"))
 prs.save(OUT)
