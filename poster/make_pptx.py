@@ -18,8 +18,12 @@ from lxml import etree
 
 S = 0.5
 W, H = 100, 180
-FONT = "Pretendard"
-FONT_XB = "Pretendard ExtraBold"
+# POSTER_FONT=malgun : 맑은 고딕 (Windows 기본, 설치 불필요) / 기본: Pretendard (PDF 인쇄용)
+MALGUN = os.environ.get("POSTER_FONT", "") == "malgun"
+FONT = "Malgun Gothic" if MALGUN else "Pretendard"
+FONT_XB = "Malgun Gothic" if MALGUN else "Pretendard ExtraBold"
+EA = {"Malgun Gothic": "맑은 고딕"}
+OUT = os.environ.get("POSTER_OUT", os.path.join(HERE, "poster_100x180.pptx"))
 
 
 def rgb(h):
@@ -76,13 +80,15 @@ def set_font(run, size, bold=False, color="ink", font=None):
     f.size = pt(size); f.bold = bold
     f.color.rgb = rgb(C.get(color, color))
     name = font or FONT
+    if MALGUN and font == FONT_XB:
+        f.bold = True
     f.name = name
     rPr = run._r.get_or_add_rPr()
     for tag in ("a:ea", "a:cs"):
         el = rPr.find(qn(tag))
         if el is None:
             el = etree.SubElement(rPr, qn(tag))
-        el.set("typeface", name)
+        el.set("typeface", EA.get(name, name))
 
 
 def text(x, y, w, h, paras, size=40, color="ink", align=PP_ALIGN.LEFT, spacing=1.2,
@@ -123,6 +129,17 @@ def text(x, y, w, h, paras, size=40, color="ink", align=PP_ALIGN.LEFT, spacing=1
     return tb
 
 
+def chart_fonts(chart):
+    """차트 안 모든 글자에 라틴·한글 글꼴을 함께 지정 (없으면 한글이 대체 글꼴로 나옴)."""
+    cs = chart._chartSpace
+    for d in list(cs.iter(qn("a:defRPr"))) + list(cs.iter(qn("a:rPr"))):
+        for tag in ("a:latin", "a:ea", "a:cs"):
+            el = d.find(qn(tag))
+            if el is None:
+                el = etree.SubElement(d, qn(tag))
+            el.set("typeface", EA.get(FONT, FONT) if tag == "a:ea" else FONT)
+
+
 def line(x1, y1, x2, y2, color="sub", lw=4, arrow=False, dash=False):
     c = sh.add_connector(MSO_CONNECTOR.STRAIGHT, cm(x1), cm(y1), cm(x2), cm(y2))
     c.line.color.rgb = rgb(C.get(color, color)); c.line.width = pt(lw)
@@ -156,7 +173,7 @@ def est_lines(s, size, width):
     if key not in _F:
         _F[key] = ImageFont.truetype(os.path.join(HERE, "fonts/Pretendard-SemiBold.ttf"), size * 4)
     f = _F[key]
-    maxw = width / 2.54 * 72 * 4 * 0.98
+    maxw = width / 2.54 * 72 * 4 * 0.94  # 맑은 고딕이 조금 더 넓어 여유를 둠
     n, cur = 1, 0.0
     sp = f.getlength(" ")
     for word in s.split(" "):
@@ -205,7 +222,7 @@ GAP = 3          # 단 사이
 CW = (W - 2 * M - GAP) / 2   # 단 너비 42.5
 PAD = 2.6        # 박스 안쪽 여백
 IW = CW - 2 * PAD
-BODY = 37        # 본문 글자 (실물 pt)
+BODY = 36        # 본문 글자 (실물 pt)
 SMALL = 30
 TOP = HEAD + 4.5
 BOTTOM = 171.5
@@ -358,6 +375,7 @@ dl = plot.data_labels; dl.font.size = pt(27); dl.number_format = '0.0'; dl.numbe
 dl.position = XL_LABEL_POSITION.OUTSIDE_END
 for s_, col in zip(plot.series, [C["act"], C["vla"]]):
     s_.format.fill.solid(); s_.format.fill.fore_color.rgb = rgb(col)
+chart_fonts(ch)
 bx.y += CH + 0.6
 # 결과 요약 원형 배지 3개
 R = 6.4
@@ -400,6 +418,7 @@ dl = plot.data_labels; dl.font.size = pt(27); dl.number_format = '0.0'; dl.numbe
 dl.position = XL_LABEL_POSITION.OUTSIDE_END
 for s_, col in zip(plot.series, [C["pre"], C["dark"]]):
     s_.format.fill.solid(); s_.format.fill.fore_color.rgb = rgb(col)
+chart_fonts(ch)
 bx.y += CH2 + 0.4
 text(bx.cx, bx.y, IW, 1.6, [[N("예측 팔이 뒤집힌 비율(%). 잡음은 난수 시드만, 나머지는 반대 색·반대 배치 입력으로 교체")]], size=27, color="sub", align=PP_ALIGN.CENTER)
 bx.y += 2.6
@@ -432,4 +451,4 @@ text(M, ry0, 12, 2, [[("참고문헌", {"bold": True, "color": "main"})]], size=
 text(M + 11, ry0 + 0.1, W - 2 * M - 11, 8, [[N(refs)]], size=23, color="sub", spacing=1.12)
 
 print(f"left_end={left_end:.1f}  right_end={right_end:.1f}  refs_y={ry0:.1f} (page H={H})")
-prs.save("/home/user/xlerobot/poster/poster_100x180.pptx")
+prs.save(OUT)
