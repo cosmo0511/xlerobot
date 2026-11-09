@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch();
   const mm = 96/25.4;
-  const p = await b.newPage({ viewport: { width: Math.round(841*mm), height: Math.round(1189*mm) } });
+  const p = await b.newPage({ viewport: { width: Math.round(900*mm), height: Math.round(1200*mm) } });
   await p.goto('file://' + __dirname + '/poster_a0.html');
   await p.evaluate(() => document.fonts.ready);
   const info = await p.evaluate(() => {
@@ -14,6 +14,6 @@ const { chromium } = require('playwright');
   });
   console.log(info);
   if (process.argv[2]) await p.screenshot({ path: process.argv[2] });
-  await p.pdf({ path: __dirname + '/poster_a0.pdf', width: '841mm', height: '1189mm', printBackground: true });
+  await p.pdf({ path: __dirname + '/poster_90x120.pdf', width: '900mm', height: '1200mm', printBackground: true });
   await b.close();
 })();
