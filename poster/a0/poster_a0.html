@@ -45,7 +45,8 @@ main { display: flex; gap: 26mm; padding: 18mm 40mm 0; height: 944mm; }
 .sec > * + * { margin-top: 6mm; }
 .panel { background: var(--panel); padding: 9mm 11mm 8mm; }
 .ptitle { font-size: 9.6mm; font-weight: 600; margin-bottom: 4mm; }
-.ptitle::before { content: "▸ "; font-size: 0.7em; vertical-align: 0.12em; }
+.ptitle::before { content: ""; display: inline-block; width: 0; height: 0; margin: 0 3mm 0.6mm 0; vertical-align: middle;
+  border-left: 2.4mm solid currentColor; border-top: 1.6mm solid transparent; border-bottom: 1.6mm solid transparent; }
 .cap { font-size: 6.4mm; color: var(--sub); line-height: 1.45; margin-top: 3mm; }
 svg { display: block; width: 100%; height: auto; font-family: P, sans-serif; }
 p + p { margin-top: 3mm; }
