@@ -48,22 +48,23 @@ main { display: flex; gap: 26mm; padding: 18mm 40mm 0; height: 955mm; }
 .ptitle { font-size: 9.6mm; font-weight: 600; margin-bottom: 4mm; }
 .ptitle::before { content: ""; display: inline-block; width: 0; height: 0; margin: 0 3mm 0.6mm 0; vertical-align: middle;
   border-left: 2.4mm solid currentColor; border-top: 1.6mm solid transparent; border-bottom: 1.6mm solid transparent; }
+.ptitle.plain::before { display: none; }
 .cap { font-size: 6.4mm; color: var(--sub); line-height: 1.45; margin-top: 3mm; }
 svg { display: block; width: 100%; height: auto; font-family: P, sans-serif; }
 p + p { margin-top: 3mm; }
 
-.photo { width: 100%; height: 155mm; object-fit: cover; object-position: 50% 45%; display: block; }
+.photo { width: 100%; height: 193mm; object-fit: cover; object-position: 50% 45%; display: block; }
 
 .rq { display: grid; grid-template-columns: auto 1fr; gap: 3mm 5mm; align-items: center; }
 .rq b { background: var(--blue); color: #fff; font-weight: 700; font-size: 7.4mm; padding: 0.6mm 4mm; border-radius: 1.5mm; }
 
 .lines div + div { margin-top: 2mm; }
-.lines em { font-style: normal; font-weight: 600; color: var(--blue); }
+.lines em { font-style: normal; font-weight: 600; color: var(--ink); }
 
 .methods { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; padding: 7mm 4mm 6mm; }
 .methods .ic { width: 18mm; height: 18mm; margin: 0 auto 3mm; color: var(--blue); }
 .methods div { font-size: 7.6mm; font-weight: 600; color: var(--blue); line-height: 1.3; }
-.methods div span { display: block; font-size: 6.2mm; color: var(--sub); font-weight: 400; margin-top: 1mm; }
+.methods div span { display: block; font-size: 6.6mm; color: var(--sub); font-weight: 400; margin-top: 2mm; line-height: 1.45; }
 
 table { width: 100%; border-collapse: collapse; font-size: 6.8mm; background: #fff; }
 th, td { padding: 1.6mm 3mm; text-align: center; border-bottom: 0.3mm solid #dfe3e8; }
@@ -74,7 +75,7 @@ tr.hi td { color: var(--vla); }
 .find { display: grid; grid-template-columns: 24mm 1fr; gap: 2.4mm 5mm; font-size: 7.8mm; line-height: 1.45; }
 .find b { background: #fff; color: var(--blue); font-weight: 600; text-align: center; font-size: 7mm; padding: 0.8mm 0; align-self: start; margin-top: 0.6mm; }
 
-.key { border-left: 2mm solid var(--vla); background: #fdf0e9; padding: 4mm 7mm; font-size: 8.2mm; }
+.key { background: var(--panel); padding: 6mm 11mm; }
 
 footer {
   position: absolute; left: 0; right: 0; bottom: 0; height: 45mm; padding: 0 46mm;
@@ -126,22 +127,16 @@ footer .l span { margin: 0 6mm; opacity: 0.7; }
       <svg viewBox="0 0 334 64"><rect x="0" y="0" width="163" height="64" rx="3" fill="#fff" stroke="#d3d8e0" stroke-width="0.5"/><text x="81.5" y="12" text-anchor="middle" font-size="6.3">"Pick up the <tspan fill="#d03a2f" font-weight="700">red</tspan> dice</text><text x="81.5" y="20.5" text-anchor="middle" font-size="6.3">and put it in the basket"</text><rect x="43" y="28" width="13" height="13" rx="1.5" fill="#d7312b"/><rect x="61" y="28" width="41" height="13" rx="1.5" fill="#fff" stroke="#9aa2ad" stroke-width="0.5"/><text x="81.5" y="36.6" text-anchor="middle" font-size="5" fill="#555b64">바구니</text><rect x="107" y="28" width="13" height="13" rx="1.5" fill="#f2c318"/><text x="81.5" y="55" text-anchor="middle" font-size="7.2" font-weight="700" fill="#1d4e9a">→ 왼팔</text><rect x="171" y="0" width="163" height="64" rx="3" fill="#fff" stroke="#d3d8e0" stroke-width="0.5"/><text x="252.5" y="12" text-anchor="middle" font-size="6.3">"Pick up the <tspan fill="#b07a00" font-weight="700">yellow</tspan> dice</text><text x="252.5" y="20.5" text-anchor="middle" font-size="6.3">and put it in the basket"</text><rect x="214" y="28" width="13" height="13" rx="1.5" fill="#d7312b"/><rect x="232" y="28" width="41" height="13" rx="1.5" fill="#fff" stroke="#9aa2ad" stroke-width="0.5"/><text x="252.5" y="36.6" text-anchor="middle" font-size="5" fill="#555b64">바구니</text><rect x="278" y="28" width="13" height="13" rx="1.5" fill="#f2c318"/><text x="252.5" y="55" text-anchor="middle" font-size="7.2" font-weight="700" fill="#1d4e9a">→ 오른팔</text></svg>
       <div class="cap">그림 3. 같은 장면이라도 지시문의 색 단어 하나에 따라 써야 하는 팔이 바뀐다. 두 주사위가 늘 함께 있어 영상만으로는 대상을 정할 수 없다 (좌우 배치는 시행마다 바뀜)</div>
     </div>
-    <div class="panel methods">
-      <div><svg class="ic" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="20" cy="9" rx="13" ry="5"/><path d="M7 9v10c0 3 6 5 13 5s13-2 13-5V9"/><path d="M7 19v10c0 3 6 5 13 5s13-2 13-5V19"/></svg>데이터 수집<span>텔레오퍼레이션</span></div>
-      <div><svg class="ic" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="22" height="22" rx="2"/><rect x="15" y="15" width="10" height="10"/><path d="M14 4v5M20 4v5M26 4v5M14 31v5M20 31v5M26 31v5M4 14h5M4 20h5M4 26h5M31 14h5M31 20h5M31 26h5"/></svg>모델 학습<span>ACT · SmolVLA</span></div>
-      <div><svg class="ic" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="20" cy="20" r="14"/><circle cx="20" cy="20" r="8"/><circle cx="20" cy="20" r="2.5" fill="currentColor"/></svg>실기 평가<span>모델당 40회</span></div>
-      <div><svg class="ic" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13h24l-6-6M34 27H10l6 6"/></svg>입력 교체<span>민감도 분석</span></div>
-    </div>
     <div class="lines">
-      <div><em>데이터</em> 텔레오퍼레이션 104 에피소드(평균 38.2초), 색상 × 팔 26/26/26/26 균등</div>
-      <div><em>분기</em> 두 팔의 동작은 중앙값 23.6초에 갈라지며, 그 전까지 행동이 같다</div>
-      <div><em>학습</em> ACT · SmolVLA를 같은 데이터로 batch 16, 80k 스텝 학습</div>
-      <div><em>평가</em> 모델당 40회(배치 2 × 시작 위치 2 × 지시 2, 각 5회), Fisher 정확검정</div>
+      <div><em>데이터:</em> 텔레오퍼레이션 104 에피소드(평균 38.2초), 색상 × 팔 26/26/26/26 균등</div>
+      <div><em>분기:</em> 두 팔의 동작은 중앙값 23.6초에 갈라지며, 그 전까지 행동이 같다</div>
+      <div><em>학습:</em> ACT · SmolVLA를 같은 데이터로 batch 16, 80k 스텝 학습</div>
+      <div><em>평가:</em> 모델당 40회(배치 2 × 시작 위치 2 × 지시 2, 각 5회), Fisher 정확검정</div>
     </div>
   </div>
   <div class="sec">
     <div class="panel">
-      <div class="ptitle">왜 언어가 불리한가</div>
+      <div class="ptitle plain">왜 언어가 불리한가</div>
       <svg viewBox="0 0 334 42"><line x1="10" y1="20" x2="322" y2="20" stroke="#9aa2ad" stroke-width="1"/><rect x="250" y="16.5" width="72" height="7" fill="#e8662e" opacity="0.25"/><text x="130" y="10" text-anchor="middle" font-size="5.6" fill="#555b64">지시와 무관하게 행동이 같은 구간</text><text x="286" y="10" text-anchor="middle" font-size="5.6" fill="#e8662e" font-weight="700">언어가 필요한 구간</text><circle cx="10" cy="20" r="2.4" fill="#1d4e9a"/><text x="10" y="32" text-anchor="middle" font-size="6.2" fill="#1f2329" font-weight="400">출발</text><text x="10" y="40" text-anchor="middle" font-size="5.6" fill="#555b64">0초</text><circle cx="95" cy="20" r="2.4" fill="#1d4e9a"/><text x="95" y="32" text-anchor="middle" font-size="6.2" fill="#1f2329" font-weight="400">주행</text><circle cx="180" cy="20" r="2.4" fill="#1d4e9a"/><text x="180" y="32" text-anchor="middle" font-size="6.2" fill="#1f2329" font-weight="400">접근</text><circle cx="250" cy="20" r="3.2" fill="#e8662e"/><text x="250" y="32" text-anchor="middle" font-size="6.2" fill="#1f2329" font-weight="700">팔이 갈림</text><text x="250" y="40" text-anchor="middle" font-size="5.6" fill="#555b64">23.6초</text><circle cx="322" cy="20" r="2.4" fill="#1d4e9a"/><text x="322" y="32" text-anchor="middle" font-size="6.2" fill="#1f2329" font-weight="400">파지</text></svg>
       <p style="margin-top:4mm">언어가 설명할 수 있는 행동 차이는 23.6초 이후에만 존재한다. 반면 영상·관절 상태는 처음부터 끝까지 오차를 줄여 준다. 관절값을 그대로 복사만 해도 오차가 6.741에서 1.555로 줄어, 정책이 줄인 오차의 84%에 해당한다.</p>
     </div>
