@@ -75,7 +75,7 @@ def fig_stages():
     cats = ["베이스 도달", "팔 움직임", "파지", "바구니 투입", "지시 색상 일치"]
     act = [67.5, 85.0, 67.5, 62.5, None]
     vla = [97.5, 100, 100, 97.5, 50.0]
-    x0, x1, y0, y1 = 20, 332, 16, 112
+    x0, x1, y0, y1 = 20, 332, 16, 144
     h = y1 - y0
     o = []
     for v in (0, 25, 50, 75, 100):
@@ -97,7 +97,7 @@ def fig_stages():
         o.append(f'<text x="{gx:.1f}" y="{y1 + 9}" text-anchor="middle" font-size="6.4" fill="{INK}">{c}</text>')
     o.append(f'<rect x="{x1 - 92}" y="1" width="6" height="6" fill="{ACT}"/><text x="{x1 - 84}" y="6.4" font-size="6">ACT</text>')
     o.append(f'<rect x="{x1 - 56}" y="1" width="6" height="6" fill="{VLA}"/><text x="{x1 - 48}" y="6.4" font-size="6">SmolVLA</text>')
-    return f'<svg viewBox="0 0 334 124">{"".join(o)}</svg>'
+    return f'<svg viewBox="0 0 334 156">{"".join(o)}</svg>'
 
 
 # ---------------- 그림 5: 입력 교체 시 뒤집힘 ----------------
@@ -109,17 +109,17 @@ def fig_swap():
     o = []
     for v in (0, 25, 50, 75, 100):
         x = x0 + w * v / 100
-        o.append(f'<line x1="{x:.1f}" y1="{top - 2}" x2="{x:.1f}" y2="{top + 6 * 15}" stroke="{"#9aa2ad" if v == 0 else "#dfe3e8"}" stroke-width="{0.5 if v == 0 else 0.3}"/>')
+        o.append(f'<line x1="{x:.1f}" y1="{top - 2}" x2="{x:.1f}" y2="{top + 6 * 18}" stroke="{"#9aa2ad" if v == 0 else "#dfe3e8"}" stroke-width="{0.5 if v == 0 else 0.3}"/>')
         o.append(f'<text x="{x:.1f}" y="{top - 5}" text-anchor="middle" font-size="5.4" fill="{SUB}">{v}</text>')
     o.append(f'<text x="{x1}" y="5" text-anchor="end" font-size="5.4" fill="{SUB}">예측 팔이 뒤집힌 비율 (%)</text>')
     for i, (lab, v) in enumerate(rows):
-        y = top + i * 15 + 3
+        y = top + i * 18 + 3
         hi = lab.startswith("지시문")
-        o.append(f'<text x="{x0 - 4}" y="{y + 7}" text-anchor="end" font-size="6.2" fill="{INK}">{lab}</text>')
+        o.append(f'<text x="{x0 - 4}" y="{y + 8}" text-anchor="end" font-size="6.2" fill="{INK}">{lab}</text>')
         bw = max(0.8, w * v / 100)
-        o.append(f'<rect x="{x0}" y="{y}" width="{bw:.1f}" height="9.5" fill="{VLA if hi else ACT}"/>')
-        o.append(f'<text x="{x0 + bw + 2.5:.1f}" y="{y + 7}" font-size="6" font-weight="700" fill="{VLA if hi else INK}">{v}</text>')
-    return f'<svg viewBox="0 0 334 112">{"".join(o)}</svg>'
+        o.append(f'<rect x="{x0}" y="{y}" width="{bw:.1f}" height="11.5" fill="{VLA if hi else ACT}"/>')
+        o.append(f'<text x="{x0 + bw + 2.5:.1f}" y="{y + 8}" font-size="6" font-weight="700" fill="{VLA if hi else INK}">{v}</text>')
+    return f'<svg viewBox="0 0 334 130">{"".join(o)}</svg>'
 
 
 # ---------------- 왜 언어가 불리한가: 타임라인 ----------------
