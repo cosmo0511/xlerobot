@@ -118,12 +118,12 @@ footer .l span { margin: 0 7mm; opacity: 0.7; }
     <img class="photo" src="assets/robot.jpg" alt="">
     <div class="cap" style="margin-top:3mm">그림 1. 실기 평가 장면 — 빨간 주사위를 집어 바구니로</div>
     <ul class="b">
-      <li>저가형 VLA 평가는 <b>고정형 단팔</b> 중심<sup class="c">[1]</sup> — 이동 베이스 + 양팔 통합 정책 평가는 드묾<sup class="c">[4]</sup></li>
-      <li>높은 조작 성공률 ≠ 언어 지시 추종 — 최근 제기되는 문제<sup class="c">[5–8]</sup></li>
+      <li>저가형 VLA 평가는 <b>고정형 단팔</b> 중심<sup class="c">[1]</sup> — 이동 베이스 + 양팔 통합 정책 평가는 드묾<sup class="c">[2]</sup></li>
+      <li>높은 조작 성공률 ≠ 언어 지시 추종 — 최근 제기되는 문제<sup class="c">[3,4]</sup></li>
       <li>양팔 로봇은 목표 물체에 따라 팔을 골라야 함 <span class="ar">→</span> 언어가 행동 결정에 반영되는지 직접 확인 가능</li>
     </ul>
     <div class="rq">
-      <b>RQ1</b><div>SmolVLA<sup class="c">[2]</sup>가 ACT<sup class="c">[3]</sup>보다 높은 조작 성능을 보이는가?</div>
+      <b>RQ1</b><div>SmolVLA<sup class="c">[5]</sup>가 ACT<sup class="c">[6]</sup>보다 높은 조작 성능을 보이는가?</div>
       <b>RQ2</b><div>언어 지시에 따라 올바른 팔을 선택하는가?</div>
     </div>
     <ul class="b">
@@ -134,8 +134,8 @@ footer .l span { margin: 0 7mm; opacity: 0.7; }
   <div class="sec">
     <div class="bar">시스템 구성<small>System</small></div>
     <ul class="b">
-      <li>SO-ARM101 양팔 + 3옴니휠 베이스(XLeRobot<sup class="c">[9]</sup>), 카메라 4대</li>
-      <li>행동·관측 상태 15차원 — 양팔 관절 12 + 베이스 속도 3, 학습·추론은 LeRobot<sup class="c">[10]</sup></li>
+      <li>SO-ARM101 양팔 + 3옴니휠 베이스, 카메라 4대</li>
+      <li>행동·관측 상태 15차원 — 양팔 관절 12 + 베이스 속도 3</li>
     </ul>
     <div class="panel">
       <svg viewBox="0 -1 334 72"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1f2329"/></marker></defs><rect x="0" y="0" width="120" height="70" rx="4" fill="#fff" stroke="#1d4e9a" stroke-width="0.8"/><path d="M0 4 a4 4 0 0 1 4 -4 h112 a4 4 0 0 1 4 4 v9 h-120z" fill="#1d4e9a"/><text x="60" y="9.6" text-anchor="middle" fill="#fff" font-size="7" font-weight="700">라즈베리파이 (로봇 호스트)</text><text x="60" y="24" text-anchor="middle" font-size="6.2" font-weight="400" fill="#555b64">연산 없음 · 센서/모터 중계</text><text x="60" y="37" text-anchor="middle" font-size="6.2" font-weight="700" fill="#1f2329">카메라 4대</text><text x="60" y="46" text-anchor="middle" font-size="6.2" font-weight="400" fill="#555b64">640×480, 30 fps</text><text x="60" y="55" text-anchor="middle" font-size="6.2" font-weight="700" fill="#1f2329">모터 15개</text><text x="60" y="64" text-anchor="middle" font-size="6.2" font-weight="400" fill="#555b64">양팔 12 · 바퀴 3</text><line x1="124" y1="26" x2="208" y2="26" stroke="#1f2329" stroke-width="0.7" marker-end="url(#ah)"/><text x="167" y="21" text-anchor="middle" font-size="6.2" font-weight="700">관측</text><text x="167" y="33" text-anchor="middle" font-size="5.6" fill="#555b64">영상 + 관절</text><line x1="208" y1="50" x2="124" y2="50" stroke="#1f2329" stroke-width="0.7" marker-end="url(#ah)"/><text x="167" y="45" text-anchor="middle" font-size="6.2" font-weight="700">행동</text><text x="167" y="57" text-anchor="middle" font-size="5.6" fill="#555b64">15차원, 1스텝씩</text><rect x="214" y="0" width="120" height="70" rx="4" fill="#fff" stroke="#e8662e" stroke-width="0.8"/><path d="M214 4 a4 4 0 0 1 4 -4 h112 a4 4 0 0 1 4 4 v9 h-120z" fill="#e8662e"/><text x="274" y="9.6" text-anchor="middle" fill="#fff" font-size="7" font-weight="700">PC (GPU, 정책 실행)</text><text x="274" y="24" text-anchor="middle" font-size="6.2" font-weight="700" fill="#1f2329">ACT / SmolVLA</text><text x="274" y="33" text-anchor="middle" font-size="6.2" font-weight="400" fill="#555b64">행동 청크 50스텝</text><text x="274" y="46" text-anchor="middle" font-size="6.2" font-weight="700" fill="#1f2329">제어 주기 30 Hz</text><text x="274" y="55" text-anchor="middle" font-size="6.2" font-weight="400" fill="#555b64">학습 데이터 fps와 같음</text></svg>
@@ -168,7 +168,7 @@ footer .l span { margin: 0 7mm; opacity: 0.7; }
       <ul class="b" style="margin-top:6mm">
         <li>언어로 설명되는 행동 차이는 23.6초 이후에만 존재</li>
         <li>영상·관절 상태는 처음부터 끝까지 오차 감소에 기여</li>
-        <li>관절값을 그대로 복사만 해도 오차 6.741 → 1.555 (정책이 줄인 오차의 84%)<sup class="c">[11]</sup></li>
+        <li>관절값을 그대로 복사만 해도 오차 6.741 → 1.555 (정책이 줄인 오차의 84%)</li>
       </ul>
     </div>
   </div>
@@ -240,16 +240,11 @@ footer .l span { margin: 0 7mm; opacity: 0.7; }
   <div class="bar" style="margin-bottom:8mm">참고문헌<small>References</small></div>
   <ol>
     <li>Y. Yu et al., "Benchmarking Vision-Language-Action Models on SO-101: Failure and Recovery Analysis," arXiv:2606.08881, 2026.</li>
-    <li>M. Shukor et al., "SmolVLA: A Vision-Language-Action Model for Affordable and Efficient Robotics," arXiv:2506.01844, 2025.</li>
-    <li>T. Z. Zhao, V. Kumar, S. Levine, C. Finn, "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware," RSS, 2023.</li>
     <li>Z. Fu, T. Z. Zhao, C. Finn, "Mobile ALOHA: Learning Bimanual Mobile Manipulation with Low-Cost Whole-Body Teleoperation," CoRL, 2024.</li>
-    <li>S. Fei et al., "LIBERO-Plus: In-depth Robustness Analysis of Vision-Language-Action Models," arXiv:2510.13626, 2025.</li>
     <li>D. Emukpere, R. Deffayet, J.-M. Renders, "Robust Skills, Brittle Grounding: Diagnosing Restricted Generalization in Vision-Language Action Policies via Multi-Object Picking," arXiv:2602.24143, 2026.</li>
     <li>Y. Fang et al., "When Vision Overrides Language: Evaluating and Mitigating Counterfactual Failures in VLAs," arXiv:2602.17659, 2026.</li>
-    <li>S. Jiang et al., "Encoded but Not in Control: Revealing the Grounding Gap in Vision-Language Robot Policies," arXiv:2610.06235, 2026.</li>
-    <li>G. Wang, "XLeRobot: A Practical Low-cost Household Dual-Arm Mobile Robot Design for General Manipulation," GitHub, 2025.</li>
-    <li>R. Cadene et al., "LeRobot: State-of-the-art Machine Learning for Real-World Robotics in PyTorch," GitHub, 2024.</li>
-    <li>C. Wen, J. Lin, T. Darrell, D. Jayaraman, Y. Gao, "Fighting Copycat Agents in Behavioral Cloning from Observation Histories," NeurIPS, 2020.</li>
+    <li>M. Shukor et al., "SmolVLA: A Vision-Language-Action Model for Affordable and Efficient Robotics," arXiv:2506.01844, 2025.</li>
+    <li>T. Z. Zhao, V. Kumar, S. Levine, C. Finn, "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware," RSS, 2023.</li>
   </ol>
 </section>
 

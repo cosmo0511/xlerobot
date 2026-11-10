@@ -118,12 +118,12 @@ footer .l span { margin: 0 7mm; opacity: 0.7; }
     <img class="photo" src="assets/robot.jpg" alt="">
     <div class="cap" style="margin-top:3mm">그림 1. 실기 평가 장면 — 빨간 주사위를 집어 바구니로</div>
     <ul class="b">
-      <li>저가형 VLA 평가는 <b>고정형 단팔</b> 중심<sup class="c">[1]</sup> — 이동 베이스 + 양팔 통합 정책 평가는 드묾<sup class="c">[4]</sup></li>
-      <li>높은 조작 성공률 ≠ 언어 지시 추종 — 최근 제기되는 문제<sup class="c">[5–8]</sup></li>
+      <li>저가형 VLA 평가는 <b>고정형 단팔</b> 중심<sup class="c">[1]</sup> — 이동 베이스 + 양팔 통합 정책 평가는 드묾<sup class="c">[2]</sup></li>
+      <li>높은 조작 성공률 ≠ 언어 지시 추종 — 최근 제기되는 문제<sup class="c">[3,4]</sup></li>
       <li>양팔 로봇은 목표 물체에 따라 팔을 골라야 함 <span class="ar">→</span> 언어가 행동 결정에 반영되는지 직접 확인 가능</li>
     </ul>
     <div class="rq">
-      <b>RQ1</b><div>SmolVLA<sup class="c">[2]</sup>가 ACT<sup class="c">[3]</sup>보다 높은 조작 성능을 보이는가?</div>
+      <b>RQ1</b><div>SmolVLA<sup class="c">[5]</sup>가 ACT<sup class="c">[6]</sup>보다 높은 조작 성능을 보이는가?</div>
       <b>RQ2</b><div>언어 지시에 따라 올바른 팔을 선택하는가?</div>
     </div>
     <ul class="b">
@@ -134,8 +134,8 @@ footer .l span { margin: 0 7mm; opacity: 0.7; }
   <div class="sec">
     <div class="bar">시스템 구성<small>System</small></div>
     <ul class="b">
-      <li>SO-ARM101 양팔 + 3옴니휠 베이스(XLeRobot<sup class="c">[9]</sup>), 카메라 4대</li>
-      <li>행동·관측 상태 15차원 — 양팔 관절 12 + 베이스 속도 3, 학습·추론은 LeRobot<sup class="c">[10]</sup></li>
+      <li>SO-ARM101 양팔 + 3옴니휠 베이스, 카메라 4대</li>
+      <li>행동·관측 상태 15차원 — 양팔 관절 12 + 베이스 속도 3</li>
     </ul>
     <div class="panel">
       {{FIG_SYSTEM}}
@@ -168,7 +168,7 @@ footer .l span { margin: 0 7mm; opacity: 0.7; }
       <ul class="b" style="margin-top:6mm">
         <li>언어로 설명되는 행동 차이는 23.6초 이후에만 존재</li>
         <li>영상·관절 상태는 처음부터 끝까지 오차 감소에 기여</li>
-        <li>관절값을 그대로 복사만 해도 오차 6.741 → 1.555 (정책이 줄인 오차의 84%)<sup class="c">[11]</sup></li>
+        <li>관절값을 그대로 복사만 해도 오차 6.741 → 1.555 (정책이 줄인 오차의 84%)</li>
       </ul>
     </div>
   </div>
@@ -240,16 +240,11 @@ footer .l span { margin: 0 7mm; opacity: 0.7; }
   <div class="bar" style="margin-bottom:8mm">참고문헌<small>References</small></div>
   <ol>
     <li>Y. Yu et al., "Benchmarking Vision-Language-Action Models on SO-101: Failure and Recovery Analysis," arXiv:2606.08881, 2026.</li>
-    <li>M. Shukor et al., "SmolVLA: A Vision-Language-Action Model for Affordable and Efficient Robotics," arXiv:2506.01844, 2025.</li>
-    <li>T. Z. Zhao, V. Kumar, S. Levine, C. Finn, "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware," RSS, 2023.</li>
     <li>Z. Fu, T. Z. Zhao, C. Finn, "Mobile ALOHA: Learning Bimanual Mobile Manipulation with Low-Cost Whole-Body Teleoperation," CoRL, 2024.</li>
-    <li>S. Fei et al., "LIBERO-Plus: In-depth Robustness Analysis of Vision-Language-Action Models," arXiv:2510.13626, 2025.</li>
     <li>D. Emukpere, R. Deffayet, J.-M. Renders, "Robust Skills, Brittle Grounding: Diagnosing Restricted Generalization in Vision-Language Action Policies via Multi-Object Picking," arXiv:2602.24143, 2026.</li>
     <li>Y. Fang et al., "When Vision Overrides Language: Evaluating and Mitigating Counterfactual Failures in VLAs," arXiv:2602.17659, 2026.</li>
-    <li>S. Jiang et al., "Encoded but Not in Control: Revealing the Grounding Gap in Vision-Language Robot Policies," arXiv:2610.06235, 2026.</li>
-    <li>G. Wang, "XLeRobot: A Practical Low-cost Household Dual-Arm Mobile Robot Design for General Manipulation," GitHub, 2025.</li>
-    <li>R. Cadene et al., "LeRobot: State-of-the-art Machine Learning for Real-World Robotics in PyTorch," GitHub, 2024.</li>
-    <li>C. Wen, J. Lin, T. Darrell, D. Jayaraman, Y. Gao, "Fighting Copycat Agents in Behavioral Cloning from Observation Histories," NeurIPS, 2020.</li>
+    <li>M. Shukor et al., "SmolVLA: A Vision-Language-Action Model for Affordable and Efficient Robotics," arXiv:2506.01844, 2025.</li>
+    <li>T. Z. Zhao, V. Kumar, S. Levine, C. Finn, "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware," RSS, 2023.</li>
   </ol>
 </section>
 
