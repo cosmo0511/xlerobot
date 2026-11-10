@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>양팔 이동 조작 포스터</title>
+<style>
+@font-face { font-family: P; src: url(assets/Pretendard-Regular.ttf); font-weight: 400; }
+@font-face { font-family: P; src: url(assets/Pretendard-Medium.ttf); font-weight: 500; }
+@font-face { font-family: P; src: url(assets/Pretendard-SemiBold.ttf); font-weight: 600; }
+@font-face { font-family: P; src: url(assets/Pretendard-Bold.ttf); font-weight: 700; }
+@font-face { font-family: P; src: url(assets/Pretendard-ExtraBold.ttf); font-weight: 800; }
+/* 실물 100 x 180 cm */
+@page { size: 1000mm 1800mm; margin: 0; }
+:root {
+  --blue: #1d4e9a; --blue2: #3a74c4; --ink: #1f2329; --sub: #555b64;
+  --panel: #eff1f4; --vla: #e8662e;
+  --fs: 10.6mm;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #fff; }
+body {
+  width: 1000mm; height: 1800mm; overflow: hidden; position: relative;
+  font-family: P, sans-serif; color: var(--ink);
+  font-size: var(--fs); line-height: 1.55; letter-spacing: -0.01em; word-break: keep-all;
+}
+
+/* ---------- 헤더 ---------- */
+header {
+  height: 262mm; padding: 38mm 52mm 0; position: relative; overflow: hidden; color: #fff;
+  background: linear-gradient(120deg, #173f86 0%, #1f55a6 55%, #2f6bc0 100%);
+}
+.globe { position: absolute; right: -60mm; top: 18mm; width: 300mm; height: 300mm; }
+.logo { position: absolute; right: 52mm; top: 34mm; width: 200mm; }
+.conf { font-size: 13mm; font-weight: 600; opacity: 0.95; }
+h1 { margin-top: 12mm; font-size: 42mm; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
+.en { margin-top: 10mm; font-size: 11.4mm; line-height: 1.35; opacity: 0.85; font-weight: 400; max-width: 760mm; }
+.authors { position: absolute; left: 52mm; bottom: 20mm; font-size: 12mm; font-weight: 500; }
+.authors span { opacity: 0.8; font-size: 10mm; margin-left: 8mm; font-weight: 400; }
+
+/* ---------- 본문 2단 ---------- */
+/* 본문·참고문헌은 --z 배율로 통째로 확대 (render_100x180.js 가 180cm 높이에 맞춰 정함) */
+main, .refs { zoom: var(--z, 1); width: calc(1000mm / var(--z, 1)); }
+main { display: flex; gap: 30mm; padding: 26mm 46mm 0; }
+.col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--gap, 16mm); }
+.bar {
+  background: linear-gradient(90deg, var(--blue) 0%, var(--blue2) 100%); color: #fff;
+  font-size: 16mm; font-weight: 600; padding: 5mm 14mm; line-height: 1.3;
+}
+.bar small { font-size: 0.72em; font-weight: 400; margin-left: 5mm; opacity: 0.95; }
+.sec > * + * { margin-top: 8mm; }
+.panel { background: var(--panel); padding: 11mm 13mm 10mm; }
+.ptitle { font-size: 11.6mm; font-weight: 700; margin-bottom: 5mm; color: var(--ink); }
+.ptitle::before { content: ""; display: inline-block; width: 0; height: 0; margin: 0 4mm 1mm 0; vertical-align: middle;
+  border-left: 3.4mm solid var(--blue); border-top: 2.2mm solid transparent; border-bottom: 2.2mm solid transparent; }
+.cap { font-size: 7.8mm; color: var(--sub); line-height: 1.45; margin-top: 4mm; }
+svg { display: block; width: 100%; height: auto; font-family: P, sans-serif; }
+b, strong { font-weight: 700; }
+.ar { color: var(--blue2); font-weight: 600; }
+.hl { color: var(--vla); font-weight: 700; }
+sup.c { font-size: 0.62em; color: var(--sub); vertical-align: 0.5em; margin-left: 0.6mm; font-weight: 500; }
+
+.photo { width: 100%; height: var(--photo, 240mm); object-fit: cover; object-position: 50% 45%; display: block; }
+
+ul.b { list-style: none; }
+ul.b li { position: relative; padding-left: 9mm; }
+ul.b li + li { margin-top: 3mm; }
+ul.b li::before { content: ""; position: absolute; left: 0.6mm; top: 0.56em; width: 3mm; height: 3mm; background: var(--blue2); }
+ul.b li ul { list-style: none; margin-top: 2mm; }
+ul.b li ul li { padding-left: 8mm; color: var(--sub); }
+ul.b li ul li::before { content: "–"; background: none; width: auto; height: auto; top: 0; color: var(--sub); }
+
+.rq { background: var(--panel); border-left: 2.4mm solid var(--blue); padding: 6mm 10mm; display: grid;
+  grid-template-columns: auto 1fr; gap: 3.6mm 6mm; align-items: center; font-weight: 700; font-size: 11.4mm; }
+.rq b { background: var(--blue); color: #fff; font-size: 8.6mm; padding: 0.6mm 4mm; border-radius: 1.5mm; }
+
+table { width: 100%; border-collapse: collapse; font-size: 8.4mm; background: #fff; }
+th, td { padding: 2mm 4mm; text-align: center; border-bottom: 0.3mm solid #dfe3e8; }
+th { background: #dfe7f3; color: var(--blue); font-weight: 700; line-height: 1.3; }
+td:first-child, th:first-child { text-align: left; }
+tr.hi td { color: var(--vla); font-weight: 700; }
+
+.find { display: grid; grid-template-columns: auto 1fr; gap: 3mm 7mm; }
+.find b { color: var(--blue); }
+
+.lim { background: var(--panel); padding: 7mm 11mm; display: grid; grid-template-columns: auto 1fr; gap: 3mm 7mm; }
+.lim b { color: var(--blue); }
+.lines { display: grid; grid-template-columns: auto 1fr; gap: 2.6mm 6mm; }
+.lines b { color: var(--blue); }
+
+.refs { padding: 0 46mm; }
+.refs ol { columns: 2; column-gap: 30mm; font-size: 7.4mm; line-height: 1.42; color: var(--sub); padding-left: 0; list-style: none; counter-reset: r; }
+.refs li { counter-increment: r; padding-left: 14mm; position: relative; break-inside: avoid; margin-bottom: 1.6mm; }
+.refs li::before { content: "[" counter(r) "]"; position: absolute; left: 0; color: var(--ink); }
+
+footer {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 58mm; padding: 0 52mm;
+  display: flex; align-items: center; justify-content: space-between; color: #fff; font-size: 12mm;
+  background: linear-gradient(120deg, #173f86 0%, #1f55a6 55%, #2f6bc0 100%);
+}
+footer .l span { margin: 0 7mm; opacity: 0.7; }
+</style>
+</head>
+<body>
+<header>
+  {{GLOBE}}
+  <img class="logo" src="assets/hsu_logo_white.svg" alt="한성대학교">
+  <div class="conf">CICS'26 정보 및 제어 학술대회</div>
+  <h1>양팔 이동 조작 정책의 조작 성능과<br>언어 지시 추종의 괴리</h1>
+  <div class="en">Dissociation between Manipulation Performance and Language Instruction Following in a Bimanual Mobile Manipulation Policy</div>
+  <div class="authors">김미송*, 김송연*, 최명기*, 김현우†, 조혜경*<span>*한성대학교 AI응용학과 &nbsp; †주식회사 로보시지</span></div>
+</header>
+
+<main id="main">
+<!-- ================= 왼쪽 ================= -->
+<section class="col">
+  <div class="sec">
+    <div class="bar">연구 배경 및 목적<small>Background</small></div>
+    <img class="photo" src="assets/robot.jpg" alt="">
+    <div class="cap" style="margin-top:3mm">그림 1. 실기 평가 장면 — 빨간 주사위를 집어 바구니로</div>
+    <ul class="b">
+      <li>저가형 VLA 평가는 <b>고정형 단팔</b> 중심<sup class="c">[1]</sup> — 이동 베이스 + 양팔 통합 정책 평가는 드묾<sup class="c">[4]</sup></li>
+      <li>높은 조작 성공률 ≠ 언어 지시 추종 — 최근 제기되는 문제<sup class="c">[5–8]</sup></li>
+      <li>양팔 로봇은 목표 물체에 따라 팔을 골라야 함 <span class="ar">→</span> 언어가 행동 결정에 반영되는지 직접 확인 가능</li>
+    </ul>
+    <div class="rq">
+      <b>RQ1</b><div>SmolVLA<sup class="c">[2]</sup>가 ACT<sup class="c">[3]</sup>보다 높은 조작 성능을 보이는가?</div>
+      <b>RQ2</b><div>언어 지시에 따라 올바른 팔을 선택하는가?</div>
+    </div>
+    <ul class="b">
+      <li>추가 분석: 팔 선택 분기 직전 언어·영상·관절 입력을 하나씩 교체 <span class="ar">→</span> 정책이 무엇에 반응하는지 확인</li>
+    </ul>
+  </div>
+
+  <div class="sec">
+    <div class="bar">시스템 구성<small>System</small></div>
+    <ul class="b">
+      <li>SO-ARM101 양팔 + 3옴니휠 베이스(XLeRobot<sup class="c">[9]</sup>), 카메라 4대</li>
+      <li>행동·관측 상태 15차원 — 양팔 관절 12 + 베이스 속도 3, 학습·추론은 LeRobot<sup class="c">[10]</sup></li>
+    </ul>
+    <div class="panel">
+      {{FIG_SYSTEM}}
+      <div class="cap">그림 2. 분산 제어 구조 — 무선은 평균 812 ms 지연으로 관측 갱신 불가 → 모든 평가는 유선(왕복 평균 2.8 ms)·30 Hz 고정</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="bar">과제 및 실험 설정<small>Task &amp; Methods</small></div>
+    <ul class="b">
+      <li>좌·우 출발 위치 중 한 곳에서 시작 <span class="ar">→</span> 1 m 앞 책상까지 이동</li>
+      <li>빨강·노랑 주사위 중 지시된 색을 그쪽 팔로 집어 바구니에 투입</li>
+    </ul>
+    <div class="panel">
+      {{FIG_TASK}}
+      <div class="cap">그림 3. 같은 장면이라도 색 단어 하나로 써야 할 팔이 바뀜 — 두 주사위가 늘 함께 있어 영상만으로는 대상 결정 불가 (좌우 배치는 시행마다 바뀜)</div>
+    </div>
+    <div class="lines">
+      <b>데이터</b><div>텔레오퍼레이션 104 에피소드(평균 38.2초), 색상 × 팔 26/26/26/26 균등</div>
+      <b>분기</b><div>두 팔 동작은 중앙값 23.6초에 갈라짐 — 그 전까지 행동 동일</div>
+      <b>학습</b><div>ACT · SmolVLA 동일 데이터, batch 16, 80k 스텝</div>
+      <b>평가</b><div>모델당 40회 (배치 2 × 시작 위치 2 × 지시 2, 각 5회), Fisher 정확검정</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="panel">
+      <div class="ptitle">왜 언어가 불리한가</div>
+      {{FIG_TIMELINE}}
+      <ul class="b" style="margin-top:6mm">
+        <li>언어로 설명되는 행동 차이는 23.6초 이후에만 존재</li>
+        <li>영상·관절 상태는 처음부터 끝까지 오차 감소에 기여</li>
+        <li>관절값을 그대로 복사만 해도 오차 6.741 → 1.555 (정책이 줄인 오차의 84%)<sup class="c">[11]</sup></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 오른쪽 ================= -->
+<section class="col">
+  <div class="sec">
+    <div class="bar">연구 결과<small>Results</small></div>
+    <div class="panel">
+      <div class="ptitle">단계별 성공률 (모델당 40회)</div>
+      {{FIG_STAGES}}
+      <div class="cap">그림 4. ACT는 언어 입력을 받지 않으므로 지시 색상 일치는 SmolVLA만 해당</div>
+    </div>
+    <ul class="b">
+      <li>SmolVLA, 조작 네 단계 모두 ACT보다 유의하게 높음 <span class="ar">→</span> RQ1 확인</li>
+      <li>그러나 지시 색상 일치는 <span class="hl">50.0%</span>에 그침
+        <ul><li>8개 조건 전부 지시와 무관하게 오른쪽 주사위 파지 — 배치가 좌우 균형이라 산술적으로 50%</li></ul></li>
+      <li>ACT도 팔이 움직인 34회 중 32회(94.1%)가 오른팔</li>
+    </ul>
+  </div>
+
+  <div class="sec">
+    <div class="bar">입력 민감도 분석<small>Input Swap</small></div>
+    <ul class="b">
+      <li>학습 데이터 104 에피소드에서 입력을 하나씩 교체해 예측 팔 변화 측정</li>
+      <li>대상: 분기 직전 312 장면 (로봇은 움직이지 않음)</li>
+    </ul>
+    <div class="panel">
+      <div class="ptitle">입력 교체 시 예측 팔이 뒤집힌 비율 (%)</div>
+      {{FIG_SWAP}}
+      <div class="cap">그림 5. 잡음은 난수 시드만, 나머지는 짝 에피소드에서 그 입력만 가져와 교체</div>
+      <table style="margin-top:6mm">
+        <tr><th>바꾼 입력</th><th>정답 팔이 바뀌어야 하나</th><th>이상값</th><th>실제</th></tr>
+        <tr><td>잡음 (난수 시드)</td><td>아니오</td><td>0%</td><td>0.6%</td></tr>
+        <tr class="hi"><td>지시문 (반대 색)</td><td>예</td><td>100%</td><td>1.3%</td></tr>
+        <tr><td>영상 (반대 배치)</td><td>예</td><td>100%</td><td>58.7%</td></tr>
+        <tr><td>관절 상태 (반대 배치)</td><td>아니오</td><td>0%</td><td>45.2%</td></tr>
+        <tr><td>영상 (같은 배치)</td><td>아니오</td><td>0%</td><td>51.3%</td></tr>
+        <tr><td>관절 상태 (같은 배치)</td><td>아니오</td><td>0%</td><td>47.8%</td></tr>
+      </table>
+      <div class="cap">반대 배치 짝 = 같은 색 지시·반대 팔 / 같은 배치 짝 = 배치 동일·다른 지시. 분기 전이라 팔이 아직 움직이지 않았고(중앙값 0.1°), 관절 상태에는 주사위의 색·위치 정보가 없음</div>
+    </div>
+    <div class="find">
+      <b>언어</b><div>기대값 100% → 실제 <span class="hl">1.3%</span>, 잡음 기준(0.6%)과 같은 수준</div>
+      <b>배치</b><div>영상 58.7% 중 배치 기여분은 7.4%p(= 58.7 − 51.3)뿐</div>
+      <b>관절</b><div>45.2% vs 47.8% — 배치와 무관, 다른 요인에 반응</div>
+      <b>전체</b><div>네 값 모두 50% 부근 — 지배적 입력 없이 하나만 바꿔도 결정이 흔들림</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="bar">결론 및 시사점<small>Conclusion</small></div>
+    <ul class="b">
+      <li>SmolVLA는 조작 네 단계 모두 ACT보다 유의하게 우세(RQ1) — 그러나 지시 색상 일치 50.0%, <b>40회 모두 오른팔</b> 사용(RQ2)</li>
+      <li>입력 교체 시 지시문 변경엔 거의 무반응, 영상·관절 상태 변경엔 크게 반응</li>
+      <li>배치가 같은 장면으로 바꿔도 절반이 뒤집힘 <span class="ar">→</span> 에피소드별 장면·자세의 미세한 차이에 의존 가능성</li>
+      <li>구조가 다른 두 정책이 같은 쏠림 <span class="ar">→</span> 특정 모델이 아닌, <b>행동과 관측 상태가 동일 변수로 구성되는 데이터 수집 방식</b>에서 비롯됨을 시사</li>
+    </ul>
+    <div class="lim">
+      <b>한계</b><div>실기 평가 모델당 40회·단일 시드 / 입력 교체 분석은 학습 데이터 대상 / 단일 장면·단일 작업</div>
+      <b>향후</b><div>검증용 에피소드 분리 재학습으로 과적합 정량화 / 주사위 배치·초기 상태 다양화로 일반화 확인</div>
+    </div>
+  </div>
+</section>
+</main>
+
+<section class="refs" id="refs">
+  <div class="bar" style="margin-bottom:8mm">참고문헌<small>References</small></div>
+  <ol>
+    <li>Y. Yu et al., "Benchmarking Vision-Language-Action Models on SO-101: Failure and Recovery Analysis," arXiv:2606.08881, 2026.</li>
+    <li>M. Shukor et al., "SmolVLA: A Vision-Language-Action Model for Affordable and Efficient Robotics," arXiv:2506.01844, 2025.</li>
+    <li>T. Z. Zhao, V. Kumar, S. Levine, C. Finn, "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware," RSS, 2023.</li>
+    <li>Z. Fu, T. Z. Zhao, C. Finn, "Mobile ALOHA: Learning Bimanual Mobile Manipulation with Low-Cost Whole-Body Teleoperation," CoRL, 2024.</li>
+    <li>S. Fei et al., "LIBERO-Plus: In-depth Robustness Analysis of Vision-Language-Action Models," arXiv:2510.13626, 2025.</li>
+    <li>D. Emukpere, R. Deffayet, J.-M. Renders, "Robust Skills, Brittle Grounding: Diagnosing Restricted Generalization in Vision-Language Action Policies via Multi-Object Picking," arXiv:2602.24143, 2026.</li>
+    <li>Y. Fang et al., "When Vision Overrides Language: Evaluating and Mitigating Counterfactual Failures in VLAs," arXiv:2602.17659, 2026.</li>
+    <li>S. Jiang et al., "Encoded but Not in Control: Revealing the Grounding Gap in Vision-Language Robot Policies," arXiv:2610.06235, 2026.</li>
+    <li>G. Wang, "XLeRobot: A Practical Low-cost Household Dual-Arm Mobile Robot Design for General Manipulation," GitHub, 2025.</li>
+    <li>R. Cadene et al., "LeRobot: State-of-the-art Machine Learning for Real-World Robotics in PyTorch," GitHub, 2024.</li>
+    <li>C. Wen, J. Lin, T. Darrell, D. Jayaraman, Y. Gao, "Fighting Copycat Agents in Behavioral Cloning from Observation Histories," NeurIPS, 2020.</li>
+  </ol>
+</section>
+
+<footer>
+  <div class="l">한성대학교 AI응용학과<span>|</span>주식회사 로보시지</div>
+  <div>Hansung University</div>
+</footer>
+</body>
+</html>

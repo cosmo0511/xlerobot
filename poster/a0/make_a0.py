@@ -151,12 +151,14 @@ def icon(k):
     return f'<svg class="ic" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">{ICON[k]}</svg>'
 
 
-html = open(os.path.join(HERE, "template.html"), encoding="utf8").read()
+TPL = os.environ.get("TPL", "template.html")
+OUTH = os.environ.get("OUTH", "poster_a0.html")
+html = open(os.path.join(HERE, TPL), encoding="utf8").read()
 for k, v in {
     "{{GLOBE}}": globe(), "{{FIG_SYSTEM}}": fig_system(), "{{FIG_TASK}}": fig_task(),
     "{{FIG_STAGES}}": fig_stages(), "{{FIG_SWAP}}": fig_swap(), "{{FIG_TIMELINE}}": fig_timeline(),
     "{{IC_DATA}}": icon("data"), "{{IC_TRAIN}}": icon("train"), "{{IC_EVAL}}": icon("eval"), "{{IC_SWAP}}": icon("swap"),
 }.items():
     html = html.replace(k, v)
-open(os.path.join(HERE, "poster_a0.html"), "w", encoding="utf8").write(html)
+open(os.path.join(HERE, OUTH), "w", encoding="utf8").write(html)
 print("ok")
