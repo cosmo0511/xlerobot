@@ -39,6 +39,7 @@ PC 성능에 따라 로봇이 학습 때보다 빠르게 움직입니다.
 | `eval_following.py` | 지시 추종률 혼동행렬. "항상 한쪽만 고르는" 모델을 걸러냄 |
 | `dataset_tools.py` | 데이터셋 지시문 분포 점검(`check`)과 병합(`merge`) |
 | `relabel_arm.py` | 지시문에 사용한 팔을 넣은 사본 만들기 (`red dice` → `red dice with the left arm`). 팔은 행동 데이터로 판정, 영상은 재인코딩 없음 |
+| `side_picker.py` | 탑캠 한 장으로 지시한 색 주사위의 좌우를 보고 팔을 붙인 지시문을 만듦. `lang_infer.py --arm-select` 가 사용 (armtext 모델용) |
 | `pose_guide.py` | 에피소드마다 리더암을 같은 자세로 맞추도록 안내 |
 | `record_alternating.sh` | 지시문을 번갈아 가며 녹화 |
 

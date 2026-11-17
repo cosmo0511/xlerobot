@@ -15,6 +15,12 @@ SmolVLA 같은 언어 지원 정책에 매 스텝 지시문을 넣어 준다. �
 실제 실행 (파이에서 CAMERA_SET=4cam ./scripts/host.sh 를 먼저):
     python lang/lang_infer.py --policy-path=bilimili/xlerobot-dice-4cam-v2-smolvla --display
 
+팔 지정 모델 (relabel_arm.py 로 만든 데이터로 학습한 armtext / armonly):
+    python lang/lang_infer.py --policy-path=bilimili/xlerobot-dice-4cam-v2-smolvla-armtext --arm-select
+    지시한 색이 바뀔 때마다 탑캠 한 장으로 주사위 좌우를 보고(side_picker.py)
+    "Pick up the yellow dice with the left arm and put it in the basket" 으로 바꿔 넣는다.
+    armonly 모델이면 --arm-select=arm. 탑캠이 좌우 반전돼 있으면 --mirror.
+
     파이 주소·id 는 config/robot.yaml, 카메라는 config/cameras.<구성>.yaml 에서 읽는다.
 
 주의
@@ -183,6 +189,30 @@ def step(model, preprocess, postprocess, robot, ds_features, device, task, robot
         log_rerun_data(observation=obs, action=action)
 
 
+# ── 팔 지정 (--arm-select) ──────────────────────────────────────────────
+
+def resolve_task(spec, ctx, args) -> tuple[str | None, str]:
+    """지시(spec)를 모델에 넣을 문장으로. (문장 또는 None, 근거)
+
+    --arm-select 가 꺼져 있으면 학습 때 문장 그대로. 켜져 있으면 탑캠 한 장으로
+    주사위 좌우를 보고 팔을 붙인다. 지시가 바뀔 때 한 번만 본다 — 팔이 주사위를
+    가리기 시작하면 판정이 흔들리기 때문.
+    """
+    if not args.arm_select:
+        return spec["task"], ""
+    from side_picker import make_task, pick_side
+    if ctx is None:                       # 연습 모드: 사진이 없으니 왼팔로 가정
+        return make_task(spec["key"], "left", args.arm_select), "연습 모드 — 좌우 판정 생략(left 가정)"
+    obs = ctx[3].get_observation()
+    img = obs.get(args.side_camera)
+    if img is None:
+        return None, f"관측에 '{args.side_camera}' 카메라가 없음"
+    side, why = pick_side(img, spec["key"], args.mirror)
+    if side is None:
+        return None, why
+    return make_task(spec["key"], side, args.arm_select), f"좌우 판정: {side} ({why})"
+
+
 # ── 메인 루프 ───────────────────────────────────────────────────────────
 
 def run(args):
@@ -199,6 +229,8 @@ def run(args):
             return
 
     current = TASKS[0]
+    task_str = current["task"]   # 모델에 실제로 넣는 문장 (--arm-select 면 팔이 붙는다)
+    resolved_for = None          # task_str 을 만든 지시. 지시가 바뀌면 다시 판정한다
     queue: list[str] = []      # 여러 동작 명령일 때 남은 단계
     paused = False
     disp = Display()
@@ -226,6 +258,8 @@ def run(args):
                             ctx[3].stop_base()   # 워치독(0.5초)을 기다리지 않고 바로 세운다
                         else:
                             ctx[0].reset()       # 멈추기 전에 받아 둔 동작 묶음은 버린다
+                    if not paused and task_str is None:
+                        resolved_for = None      # 좌우 판정에 실패해 멈췄던 것 → 다시 본다
                     continue
                 if low == "t":
                     disp.end()
@@ -271,11 +305,25 @@ def run(args):
                     changed_at = time.time()
                     reason = f"{low.upper()} 키"
 
-            if not paused:
+            if resolved_for is not current:
+                resolved_for = current
+                task_str, why = resolve_task(current, ctx, args)
+                if task_str is None:
+                    paused = True
+                    if ctx is not None:
+                        ctx[3].stop_base()
+                    reason = f"{why} → 일시정지 (주사위가 보이게 두고 SPACE 로 다시 판정)"
+                else:
+                    if ctx is not None and args.arm_select:
+                        ctx[0].reset()           # 앞 지시로 받아 둔 동작 묶음은 버린다 (팔이 바뀌었을 수 있음)
+                    if why:
+                        reason = f"{reason}  |  {why}"
+
+            if not paused and task_str is not None:
                 if dry:
                     time.sleep(1 / 30)
                 else:
-                    step(*ctx, task=current["task"], robot_type=args.robot_type,
+                    step(*ctx, task=task_str, robot_type=args.robot_type,
                          display=args.display)
                 sent += 1
                 now = time.time()
@@ -299,7 +347,7 @@ def run(args):
                 f"  상태   {C['w']}일시정지{C['r']}" if paused else
                 f"  상태   {C['ok']}동작 중{C['r']}    {hz:5.1f} Hz    스텝 {sent}",
                 f"  지시   {C['b']}{current['label']}{C['r']}  "
-                f"\"{C['hi']}{current['task']}{C['r']}\""
+                f"\"{C['hi']}{task_str or '-'}{C['r']}\""
                 + (f"  {C['mag']}← 방금 바뀜{C['r']}" if since < 1.5 else ""),
                 f"  근거   {C['dim']}{reason}{C['r']}",
             ] + ([diag_row(ctx[3], C)] if ctx is not None else []) + ([f"  남은   {C['w']}{len(queue)}단계{C['r']}  "
@@ -339,6 +387,11 @@ def main():
                    help="카메라 4대와 동작을 rerun 창에 띄운다")
     p.add_argument("--no-llm", dest="use_llm", action="store_false",
                    help="LLM 해석기를 끄고 키워드만 쓴다")
+    p.add_argument("--arm-select", nargs="?", const="color_arm", default=None,
+                   choices=["color_arm", "arm"],
+                   help="탑캠으로 주사위 좌우를 보고 지시문에 팔을 붙인다 (armtext 모델=color_arm, armonly=arm)")
+    p.add_argument("--side-camera", default="top", help="좌우 판정에 쓸 카메라 이름 (기본 top)")
+    p.add_argument("--mirror", action="store_true", help="카메라 화면 좌우가 로봇과 반대일 때")
     args = p.parse_args()
 
     if not args.dry_run and not args.policy_path:
